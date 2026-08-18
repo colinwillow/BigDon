@@ -2,6 +2,21 @@
 
 A mobile-first, toon-shaded twin-stick action game. Two thumbs, no buttons.
 
+## Anything meant for testing goes to `main`
+
+**Always push to `main`.** GitHub Pages serves `main`, and a change that Pages
+isn't serving cannot be played on a phone — which is the only place this game is
+really tested.
+
+So: branch as much as you like while working. What does not work is *ending* a
+requested change on a branch. "It's done, it's on `claude/whatever`" means it
+can't be played, so it isn't done. Merge to `main` and push before reporting
+back. If a change turns out bad it gets reverted; that's cheap, and cheaper than
+a review step nobody performs.
+
+Don't open a pull request unless asked — it's an extra click between the work and
+the phone it needs to run on.
+
 ## No build step — keep it that way
 
 `three` is vendored into `vendor/three/`, `index.html` has an importmap, and the
