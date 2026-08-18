@@ -1,6 +1,6 @@
 # Big Don
 
-A mobile-first, toon-shaded twin-stick action game. Runs in the browser, no build
+A mobile-first twin-stick action game. Runs in the browser, no build
 step — `three` is vendored and the browser loads `src/` as written.
 
 ```sh
@@ -36,11 +36,12 @@ src/
     Input.js        binds the two sticks to the character's verbs
   player/
     clips.js        which track drives what, plus all the movement tuning
+    rig.js          skinned measuring + facing, testable without a GLTF loader
     AnimationController.js   the weighted blend tree
     Character.js    movement + state machine
     loadCharacter.js  load, normalise, toon-ify
   camera/FollowCamera.js
-  render/toon.js    toon material, ink outline, lighting
+  render/materials.js  flat self-lit materials + lighting
   world/World.js    the white box world
 tests/
   locomotion.mjs    31 deterministic controller checks (no browser)

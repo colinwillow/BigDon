@@ -1,4 +1,4 @@
-// Load the character GLB, normalise it, and give it the toon look.
+// Load the character GLB, normalise it, and give it the flat, self-lit look.
 //
 // Two things here are worth not hard-coding, because both silently break in
 // ways that look like a bug in the movement code rather than a bug at load:
@@ -16,7 +16,7 @@
 
 import * as THREE from '../../vendor/three/three.module.js';
 import { GLTFLoader } from '../../vendor/three/addons/loaders/GLTFLoader.js';
-import { toonMaterial, addOutline } from '../render/toon.js';
+import { flatten } from '../render/materials.js';
 import { measureYawOffset } from './rig.js';
 
 export { normaliseHeight, skinnedBounds } from './rig.js';
@@ -40,33 +40,13 @@ export async function loadCharacter(url, opts = {}) {
   root.userData.yawOffset = 0;
   scene.rotation.y += yawOffset;
 
-  // ── toon materials ──────────────────────────────────────────────────────
+  // ── the flat, self-lit look ─────────────────────────────────────────────
+  // Keeps whatever the exporter produced (map, colour space, skinning) and
+  // retunes it: see render/materials.js for why the texture is fed back in as
+  // its own emissive map.
   const skinned = [];
-  scene.traverse((o) => {
-    if (!o.isMesh && !o.isSkinnedMesh) return;
-    o.castShadow = true;
-    o.receiveShadow = true;
-    // An animated character routinely reaches outside its bind-pose bounds;
-    // three culls on those bounds and the character vanishes at screen edges.
-    o.frustumCulled = false;
-    if (o.isSkinnedMesh) skinned.push(o);
-
-    const old = o.material;
-    o.material = toonMaterial({
-      color: opts.color ?? 0xffffff,
-      map: old && old.map ? old.map : null,
-      rimColor: 0xffe6c2,
-      rimPower: 2.4,
-      rimStrength: 0.42,
-    });
-    if (old && old.dispose) old.dispose();
-  });
-
-  addOutline(root, {
-    color: opts.outlineColor ?? 0x14121a,
-    thickness: opts.outlineThickness ?? 0.032,
-    minSize: 0.05,
-  });
+  scene.traverse((o) => { if (o.isSkinnedMesh) skinned.push(o); });
+  flatten(root, { emissive: opts.emissive });
 
   return { root, clips: gltf.animations, skinned, yawOffset };
 }

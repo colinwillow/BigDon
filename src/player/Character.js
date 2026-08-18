@@ -198,6 +198,7 @@ export class Character {
       this._coyote = 0;
       this._jumpBuffered = -1;
       this.anim.endOneShot();
+      this.anim.enterAir();
       this._enter('air');
     }
 
@@ -228,7 +229,7 @@ export class Character {
     } else {
       this.grounded = false;
       this._coyote = Math.max(0, this._coyote - dt);
-      if (this.state === 'ground') this._enter('air');
+      if (this.state === 'ground') { this.anim.enterAir(); this._enter('air'); }
     }
 
     this.speed = Math.hypot(this.velocity.x, this.velocity.z);

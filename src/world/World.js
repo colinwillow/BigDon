@@ -6,7 +6,7 @@
 // animation is. The grid, the markers and the blocks are a measuring stick.
 
 import * as THREE from '../../vendor/three/three.module.js';
-import { toonMaterial, addOutline } from '../render/toon.js';
+import { flatMaterial } from '../render/materials.js';
 
 /** Grid squares are exactly 1 metre, so you can count them to check speed. */
 const GRID_STEP = 1;
@@ -24,7 +24,7 @@ export function buildWorld(scene) {
   // ── ground ──────────────────────────────────────────────────────────────
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(GRID_EXTENT * 2, GRID_EXTENT * 2),
-    toonMaterial({ color: 0xf7f7fa, rimStrength: 0 })
+    flatMaterial({ color: 0xe4e4ec })
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
@@ -35,7 +35,7 @@ export function buildWorld(scene) {
   // Drawn as lines just above the floor. polygonOffset would work too, but a
   // small lift is simpler and cannot z-fight on a mobile depth buffer.
   const grid = new THREE.GridHelper(
-    GRID_EXTENT * 2, (GRID_EXTENT * 2) / GRID_STEP, 0x8f8fa2, 0xc2c2d0
+    GRID_EXTENT * 2, (GRID_EXTENT * 2) / GRID_STEP, 0x7d7d92, 0xb0b0c2
   );
   grid.position.y = 0.002;
   grid.material.transparent = true;
@@ -45,7 +45,7 @@ export function buildWorld(scene) {
   // ── ten-metre markers ───────────────────────────────────────────────────
   // Darker studs every 10m. Running between two of them and counting seconds
   // is how you check that runSpeed is actually the speed it claims to be.
-  const markerMat = toonMaterial({ color: 0xc9c9d4, rimStrength: 0 });
+  const markerMat = flatMaterial({ color: 0x9c9cae });
   const markerGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.04, 12);
   for (let x = -40; x <= 40; x += 10) {
     for (let z = -40; z <= 40; z += 10) {
@@ -61,7 +61,7 @@ export function buildWorld(scene) {
   // Something to run around, judge scale against, and cast shadows onto. The
   // step heights are chosen against the 1.8m character: 0.45 is knee height,
   // 0.9 is waist, 1.8 is exactly his own height.
-  const blockMat = toonMaterial({ color: 0xffffff, rimColor: 0xffe6c2, rimStrength: 0.35 });
+  const blockMat = flatMaterial({ color: 0xf4f4fa });
   const blocks = [
     [3.5, 0.45, 3.5, 2.0, 0.9, 2.0],
     [-4.5, 0.45, 2.5, 1.4, 0.9, 1.4],
@@ -90,8 +90,6 @@ export function buildWorld(scene) {
     m.receiveShadow = true;
     group.add(m);
   }
-
-  addOutline(group, { color: 0x1a1a24, thickness: 0.03, minSize: 0.35 });
 
   scene.add(group);
   return group;

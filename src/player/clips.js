@@ -54,9 +54,15 @@ export const CLIPS = {
  * do not start on the same foot, which reads as a hitch when the blend swings
  * between them. Expressed in cycles (0..1).
  *
- * `start` skips dead time at the head of a one-shot. `falling_to_roll` spends
- * its first third in the air before it ever touches the ground, so a dodge roll
- * that plays it from zero looks like the character hesitates.
+ * `start` skips dead time at the head of a one-shot, and `timeScale` sets the
+ * pace.
+ *
+ * `falling_to_roll` is the only roll in the pack, and despite the name it does
+ * NOT open with a fall — frame 0 is already the tuck. Its shape is: tuck and
+ * roll through to about 55%, then stand back up. It was previously started at
+ * 62%, which skipped the whole roll and played only the getting-up, so the
+ * dodge read as a stumble. Play it from zero, at double speed so a dodge is a
+ * dodge and not a 1.8 second commitment.
  */
 export const CLIP_TUNING = {
   walking:              { phase: 0.00 },
@@ -69,51 +75,73 @@ export const CLIP_TUNING = {
   left_strafe:          { phase: 0.50 },
   right_strafe:         { phase: 0.00 },
 
-  falling_to_roll:      { start: 0.62, timeScale: 1.35 },
+  falling_to_roll:      { start: 0.0, timeScale: 2.0 },
   hard_landing:         { timeScale: 1.6 },
   jumping_up:           { timeScale: 1.0 },
 };
 
-/** Movement + feel constants. Tunable live from the debug panel. */
+/**
+ * Movement + feel constants.
+ *
+ * ── WHERE THESE NUMBERS COME FROM ────────────────────────────────────────
+ * Derived from Robits rather than invented, because that is the game this one
+ * is chasing. Robits normalises its player to 18 world units tall, so 10 of its
+ * units is 1 metre here, and its constants convert directly:
+ *
+ *   MOVE.topSpeed 269 (mobile)   ->  26.9 m/s        arcade-fast
+ *   _RUN_MULT 1.55               ->  run is 1.55x walk
+ *   _RUN_DEAD 0.45               ->  you break into a run at 45% deflection
+ *   JUMP_BASE 240 / GRAV 320     ->  24 m/s up at 32 m/s^2 = a 9m apex
+ *
+ * Robits' player hovers, so its full 27-42 m/s would put Big Don's foot cycle
+ * somewhere absurd. What IS taken directly: the 1.55 run ratio, the 0.45 run
+ * threshold (the single biggest feel difference — you are running almost
+ * immediately instead of having to shove the stick to 72%), the 32 m/s^2
+ * gravity, and a fast velocity ramp. Speeds land at roughly double the old
+ * values; the jump is a little under half Robits' height.
+ */
 export const TUNING = {
   // ── speeds, in metres/sec ────────────────────────────────────────────────
-  // The walk/run split is a stick-deflection threshold, not two buttons: ease
-  // the thumb out and he walks, push past `runAt` and he commits to a run.
-  walkSpeed: 1.7,
-  runSpeed: 5.0,
-  runAt: 0.72,          // stick deflection above which we're running
+  walkSpeed: 3.1,
+  runSpeed: 9.6,        // ~2x the old 5.0, and 1.55x a 6.2 m/s jog
+  runAt: 0.45,          // Robits' _RUN_DEAD — commit to the run early
 
-  accel: 22,            // m/s^2 — how hard he gets up to speed
-  decel: 26,            // m/s^2 — and how hard he stops
-  airControl: 0.35,     // fraction of ground accel available mid-air
+  // Robits eases velocity with a per-frame factor of ~0.20-0.28, which is a
+  // ~0.08s time constant: near-instant by comparison to a gentle m/s^2 ramp.
+  // That crispness is most of why its movement feels responsive rather than
+  // floaty, so these are deliberately high.
+  accel: 72,            // m/s^2 — reaches full run in about 0.13s
+  decel: 88,
+  airControl: 0.45,
 
-  // Turn rate is deliberately fast but not instant. Instant turning reads as
-  // the model teleporting between facings; too slow and the stick feels laggy.
-  turnRate: 13.0,       // rad/sec when moving
-  turnRateAim: 18.0,    // ...and when the aim stick owns the facing
+  turnRate: 15.0,       // rad/sec when moving
+  turnRateAim: 20.0,    // ...and when the aim stick owns the facing
 
   // ── jump ─────────────────────────────────────────────────────────────────
-  jumpSpeed: 6.2,       // m/s launch — with gravity below, ~1.0m and ~0.9s
-  gravity: 20.0,
+  // 16 m/s at 32 m/s^2 is a 4.0m apex and a 1.0s hang — over four times the old
+  // height, and about 2.2 of his own heights. Robits' own jump is 5 heights
+  // (9m for Big Don); raise jumpSpeed to 24 to match it exactly.
+  jumpSpeed: 16.0,
+  gravity: 32.0,
   coyoteTime: 0.10,     // still jumpable this long after walking off an edge
   jumpBuffer: 0.14,     // a jump pressed this soon before landing still fires
 
   // ── dash / roll (left-stick flick) ───────────────────────────────────────
-  dashSpeed: 9.5,
-  dashDuration: 0.42,
-  dashCooldown: 0.34,
+  dashSpeed: 17.0,
+  dashDuration: 0.50,
+  dashCooldown: 0.30,
 
   // ── animation blending ───────────────────────────────────────────────────
-  // Half-lives in seconds. Locomotion weights are smoothed rather than snapped
-  // so a direction change crossfades instead of popping.
   blendHL: 0.075,
-  oneShotIn: 0.06,      // one-shots come in fast — a melee must feel immediate
-  oneShotOut: 0.16,     // ...and leave gently, back into the locomotion tree
-  landFade: 0.22,       // how much of the landing clip we actually use
+  oneShotIn: 0.05,      // one-shots come in fast — a melee must feel immediate
+  oneShotOut: 0.14,
+  landFade: 0.20,
 
   // Foot-cycle length. The blend runs on a SHARED normalised phase so every
-  // clip in the tree steps together; this is how many metres of ground one full
-  // cycle covers, which is what keeps the feet from skating.
-  walkStride: 1.55,
-  runStride: 3.35,
+  // clip steps together; this is how many metres of ground one full cycle
+  // covers, which is what keeps the feet from skating. Scaled up with the new
+  // speeds — leaving them at the old values would spin the run cycle at nearly
+  // three strides a second.
+  walkStride: 1.75,
+  runStride: 4.6,
 };

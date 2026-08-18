@@ -59,13 +59,23 @@ console.log('\nmovement');
     `speed=${c.speed.toFixed(2)} want=${TUNING.runSpeed}`);
 }
 {
-  // Deflection below runAt must be a WALK, not a slow run. This is the gait
-  // split the whole animation tree is built on.
-  const c = makeChar();
-  run(c, 2.0, { moveZ: -0.5 });
-  ok('half deflection stays at or below walk speed', c.speed <= TUNING.walkSpeed + 0.01,
-    `speed=${c.speed.toFixed(2)} walk=${TUNING.walkSpeed}`);
-  ok('half deflection actually moves', c.speed > 0.3, `speed=${c.speed.toFixed(2)}`);
+  // The gait split the whole animation tree is built on. Expressed RELATIVE to
+  // runAt, not as a hardcoded deflection: the threshold moved from 0.72 to 0.45
+  // when the tuning came across from Robits, and a test pinned to "0.5 is a
+  // walk" fails on a retune without anything actually being broken.
+  const belowRunAt = makeChar();
+  run(belowRunAt, 2.0, { moveZ: -(TUNING.runAt * 0.8) });
+  ok('deflection below runAt stays at or below walk speed',
+    belowRunAt.speed <= TUNING.walkSpeed + 0.01,
+    `speed=${belowRunAt.speed.toFixed(2)} walk=${TUNING.walkSpeed}`);
+  ok('a small push still moves him', belowRunAt.speed > 0.3,
+    `speed=${belowRunAt.speed.toFixed(2)}`);
+
+  const aboveRunAt = makeChar();
+  run(aboveRunAt, 2.0, { moveZ: -Math.min(1, TUNING.runAt + 0.25) });
+  ok('deflection above runAt breaks into a run',
+    aboveRunAt.speed > TUNING.walkSpeed + 0.01,
+    `speed=${aboveRunAt.speed.toFixed(2)} walk=${TUNING.walkSpeed}`);
 }
 {
   const c = makeChar();
@@ -118,12 +128,21 @@ console.log('\njump');
   ok('lands grounded', c.grounded === true);
 }
 {
-  // The buffer: a jump pressed slightly before touchdown must still fire.
+  // Apex is measured by running until he starts falling, and checked against
+  // the physics the tuning implies (v^2/2g) rather than a hardcoded height, so
+  // raising the jump does not fail this without a real regression.
   const c = makeChar();
   c.requestJump();
-  run(c, 0.35, {});
-  const apex = c.position.y;
-  ok('reaches a sensible apex', apex > 0.5 && apex < 2.5, `apex=${apex.toFixed(2)}`);
+  let apex = 0;
+  for (let i = 0; i < 400 && (c.velocity.y > 0 || i < 2); i++) {
+    c.update(1 / 60, { moveX: 0, moveZ: 0, aiming: false, aimYaw: 0 });
+    c.anim.update(1 / 60);
+    apex = Math.max(apex, c.position.y);
+  }
+  const want = (TUNING.jumpSpeed * TUNING.jumpSpeed) / (2 * TUNING.gravity);
+  ok('apex matches the tuned jump physics', Math.abs(apex - want) < want * 0.06,
+    `apex=${apex.toFixed(2)} want=${want.toFixed(2)}`);
+  ok('he clears his own height', apex > 1.8, `apex=${apex.toFixed(2)}`);
 }
 {
   // Coyote time: walking off a ledge leaves a moment where jump still works.

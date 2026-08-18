@@ -56,15 +56,42 @@ in there exist purely to pin down *direction* and handedness — the aim-mode
 strafe check would pass with the left and right clips swapped if it only
 asserted "some strafe clip is playing".
 
+## The look, and where the numbers come from
+
+**Robits is the reference, not Peggy.** Peggy's input layer got ported in first
+because it was already split into modules and its header credited Robits — but
+Peggy's flick detector is a *different algorithm* from Robits', and none of
+Peggy's movement or render numbers came from Robits at all. Robits is the game
+that had months of tuning; when something needs a number, go and read it out of
+`index.html` there rather than inventing one.
+
+Robits normalises its player to **18 world units**, and Big Don is 1.8m, so
+**10 Robits units = 1 metre** and its constants convert straight across. What is
+already taken: the 1.55 run multiplier, `_RUN_DEAD` 0.45 (run threshold), 32
+m/s^2 gravity, and a fast velocity ramp. See the block comment on `TUNING` in
+`src/player/clips.js`.
+
+Still NOT ported: the flick detector itself. Robits resolves a flick by
+snap-out-and-return (out past 0.78, back inside 0.40, within 160ms); the
+`Joystick.js` here uses Peggy's radial-speed-plus-rebound model instead.
+
+### Rendering: the texture lights itself
+
+There is no toon shader and no ink outline — the model's own texture maps are
+already stylised, so shading them again just fought them. The look is Robits':
+
+* the base colour map is fed back in as an **emissive map** at ~0.9, so the
+  character is lit by his own paint and reads at full saturation
+* `metalness 0, roughness 1` — a GLB arrives with mid PBR values, and that
+  moving specular hotspot is what made a hand-painted texture look like wet
+  plastic
+* **ACES tone mapping at exposure 1.1**. Counter-intuitive with an emissive
+  texture, but `NoToneMapping` clips every bright pixel to flat white
+
+The world does NOT self-illuminate — only the character. Emissive on the world
+too washes every block to the same flat white and the character stops popping.
+
 ## The model
-
-`models/donny_game.glb` — 72 baked tracks, Mixamo rig (`mixamorig_*`, 65 joints),
-one skinned mesh, one material.
-
-**Every clip is in-place.** The hips track is a two-key constant, so no clip
-translates the character. Code owns movement, the clip owns the pose, and the two
-never fight. If you ever add a root-motion clip, it needs its delta sampled and
-fed back into the controller — a different and much fussier design.
 
 ### Two traps this GLB sets
 

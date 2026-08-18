@@ -1,7 +1,7 @@
 // Boot, main loop, and the debug HUD.
 
 import * as THREE from '../vendor/three/three.module.js';
-import { setupLights } from './render/toon.js';
+import { setupLights } from './render/materials.js';
 import { buildWorld } from './world/World.js';
 import { loadCharacter, normaliseHeight } from './player/loadCharacter.js';
 import { Character } from './player/Character.js';
@@ -20,7 +20,12 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.NoToneMapping;   // flat fills, not filmic rolloff
+// ACES, not NoToneMapping. With the textures self-illuminating, NoToneMapping
+// clips every bright pixel to flat white and the highlights lose their detail;
+// ACES rolls them off instead. This is most of why Robits reads as graded and
+// crisp rather than blown out.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 200);
