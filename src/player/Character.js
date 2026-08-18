@@ -53,6 +53,7 @@ export class Character {
     this._jumpBuffered = -1;
     this._dashCooldown = 0;
     this._dashDir = new THREE.Vector3();
+    this._meleeDir = new THREE.Vector3();
     this._comboIndex = 0;
     this._comboT = 0;
 
@@ -92,16 +93,27 @@ export class Character {
     return true;
   }
 
-  /** Right-stick flick: melee. Chains through the combo if re-flicked in time. */
+  /**
+   * Right-stick flick: melee.
+   *
+   * Chains: re-flicking inside `comboWindow` advances to the next swing and
+   * INTERRUPTS the current one, so a combo is as fast as you can flick rather
+   * than being paced by the clips. Letting the window lapse resets to the
+   * opener.
+   */
   requestMelee(worldAngle) {
     if (this.state === 'dash') return false;
     const combo = CLIPS.meleeCombo;
-    // Re-flicking while the previous swing is still resolving advances the
-    // combo; letting it lapse resets to the opener.
-    if (this.state !== 'melee' || this._comboT <= 0) this._comboIndex = 0;
+    // The window is checked against the combo timer, not against being mid-
+    // swing: a chain has to survive the swing ending, or the second hit only
+    // lands if you flick during the first one's animation.
+    if (this._comboT <= 0) this._comboIndex = 0;
     else this._comboIndex = (this._comboIndex + 1) % combo.length;
-    this._comboT = 0.9;
+    this._comboT = this.T.comboWindow;
     if (worldAngle != null) this.facing = worldAngle;
+    // Lunge along the FACING, which the line above has just set to the flick
+    // direction — so he steps into wherever you swung.
+    this._meleeDir.set(Math.sin(this.facing), 0, Math.cos(this.facing));
     this._enter('melee');
     this._oneShotEnds = this.anim.play(combo[this._comboIndex]);
     return true;
@@ -162,10 +174,18 @@ export class Character {
         break;
       }
       case 'melee': {
-        // Planted. Drain whatever speed he had into a stop over the swing.
-        this.velocity.x = damp(this.velocity.x, 0, 0.10, dt);
-        this.velocity.z = damp(this.velocity.z, 0, 0.10, dt);
-        if (this._stateT >= this._oneShotEnds) {
+        // A short forward lunge, then a hard stop. None of the melee clips
+        // carry root motion, so without this he swings on the spot and the
+        // player has to walk the last half metre in themselves.
+        const lt = clamp01(this._stateT / this.T.meleeLungeTime);
+        const punch = 1 - lt * lt;          // hardest on frame one, gone by the end
+        this.velocity.x = this._meleeDir.x * this.T.meleeLungeSpeed * punch;
+        this.velocity.z = this._meleeDir.z * this.T.meleeLungeSpeed * punch;
+        // Hand control back at meleeRecover even though the clip runs longer —
+        // the animation keeps playing into its fade, but he stops being a
+        // statue. Waiting for the full clip is what made one swing feel like a
+        // commitment.
+        if (this._stateT >= Math.min(this._oneShotEnds, this.T.meleeRecover)) {
           this.anim.endOneShot();
           this._enter(this.grounded ? 'ground' : 'air');
         }

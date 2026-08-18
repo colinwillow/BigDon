@@ -94,6 +94,8 @@ async function boot() {
   input.onDash = (a) => character.requestDash(a);
   input.onRecentre = () => follow.recentre(character);
 
+  window.__input = input;         // gesture tests drive the sticks through this
+
   input.layout();
   follow.snapTo(character);
   resize();

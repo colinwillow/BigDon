@@ -76,6 +76,12 @@ export const CLIP_TUNING = {
   right_strafe:         { phase: 0.00 },
 
   falling_to_roll:      { start: 0.0, timeScale: 2.0 },
+
+  // The melee takes are 2.3-3.2s each, which is a cinematic swing, not a game
+  // one. At 1x a single hit locked him up for longer than most fights last.
+  standing_melee_attack_horizontal: { timeScale: 2.9 },
+  standing_melee_attack_backhand:   { timeScale: 3.2 },
+  standing_melee_attack_downward:   { timeScale: 2.9 },
   hard_landing:         { timeScale: 1.6 },
   jumping_up:           { timeScale: 1.0 },
 };
@@ -125,6 +131,18 @@ export const TUNING = {
   gravity: 32.0,
   coyoteTime: 0.10,     // still jumpable this long after walking off an edge
   jumpBuffer: 0.14,     // a jump pressed this soon before landing still fires
+
+  // ── melee (right-stick flick) ────────────────────────────────────────────
+  // A swing is a MOVE, not just a pose: without the lunge he swipes at the air
+  // wherever he happens to be standing, and closing the last half metre becomes
+  // the player's job. The lunge is procedural because none of these clips carry
+  // any root motion — every one is in-place.
+  meleeLungeSpeed: 11.0,
+  meleeLungeTime: 0.18,     // short and sharp: a step into the swing, not a dash
+  // The state ends here even if the clip is still playing, so he is steerable
+  // again well before the animation's long recovery tail finishes.
+  meleeRecover: 0.42,
+  comboWindow: 0.65,        // re-flick inside this to advance the combo
 
   // ── dash / roll (left-stick flick) ───────────────────────────────────────
   dashSpeed: 17.0,

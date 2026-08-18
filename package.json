@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "python3 -m http.server 8123",
-    "test": "node tests/run.mjs"
+    "test": "node tests/run.mjs",
+    "test:locomotion": "node tests/locomotion.mjs",
+    "test:gestures": "node tests/gestures.mjs",
+    "clipstrip": "node tests/clipstrip.mjs"
   },
   "devDependencies": {
     "playwright": "^1.47.0"

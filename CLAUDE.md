@@ -42,9 +42,12 @@ Two consequences worth knowing:
 
 ```sh
 npm start            # static server on :8123
-node tests/locomotion.mjs   # 31 controller checks, no browser needed
+node tests/locomotion.mjs   # 51 controller checks, no browser needed
 node tests/smoke.mjs        # boots the real game in Chromium
-npm test                    # both
+node tests/gestures.mjs     # drives the sticks with real touch events
+npm test                    # all three
+
+CLIP=standing_melee_attack_backhand node tests/clipstrip.mjs   # audition any clip
 ```
 
 `tests/locomotion.mjs` steps `Character` at a fixed dt with a stub model, so the
@@ -154,6 +157,10 @@ the top before changing a threshold. The parts that look redundant and are not:
   can't fire on crossing a threshold. It resolves on what happens next: snapped
   back or released → flick; still travelling after 200ms → it was a pan. Camera
   deltas are buffered meanwhile so a melee never whips the view.
+* **Repeat flicks within one touch.** The candidate arming deliberately does not
+  test `_flickedThisTouch` — that flag only clears when the thumb lifts, and
+  testing it there allowed exactly one flick per touch, which is why melee could
+  not combo. `tests/gestures.mjs` pins this.
 
 The camera pans on thumb *movement*, not held deflection. That is what frees the
 out-and-still posture to mean "aiming", which is what makes hold-to-shoot work.

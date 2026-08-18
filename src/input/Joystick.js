@@ -411,9 +411,18 @@ export class Joystick {
         this._fireFlick();
         return;
       }
-    } else if (!this._flicked && !this._flickedThisTouch && !this.aimActive
+    } else if (!this._flicked && !this.aimActive
         && prevFrac < FLICK_MAG && frac >= FLICK_MAG
         && this._radialSpeed >= FLICK_SPEED) {
+      // NOTE: this deliberately does NOT test _flickedThisTouch. That flag is
+      // only cleared when the thumb LIFTS, so testing it here allowed exactly
+      // one flick per touch — you had to lift and press again for a second
+      // swing, which is why melee could never combo. The re-arm above (frac
+      // dropping back inside FLICK_RESET) is the intended gate, and it was
+      // dead code while this flag was also being checked.
+      //
+      // _flickedThisTouch still guards the things it should: a touch that
+      // flicked must not also become an aim-hold or pull the shoot trigger.
       // Arms on the CROSSING only. Without the prevFrac guard, a pan whose
       // candidate had already timed out re-armed a fresh one every sample —
       // the thumb is still out and still fast — and the eventual lift fired a

@@ -10,7 +10,7 @@
 import * as THREE from '../vendor/three/three.module.js';
 import { Character } from '../src/player/Character.js';
 import { measureYawOffset } from '../src/player/rig.js';
-import { TUNING } from '../src/player/clips.js';
+import { TUNING, CLIPS } from '../src/player/clips.js';
 import { wrapAngle } from '../src/core/math.js';
 
 let pass = 0, fail = 0;
@@ -243,6 +243,74 @@ console.log('\nblend tree');
   ok('phase does not advance while standing still', near(c.anim.phase, stopped, 1e-9),
     `phase=${c.anim.phase} stopped=${stopped}`);
   ok('phase advanced while moving', moved > 0);
+}
+
+console.log('\nmelee');
+{
+  // A swing must MOVE him. Every melee clip in this pack is in-place, so if the
+  // lunge is not applied procedurally he swipes at the air on the spot and
+  // closing the last half metre becomes the player's problem.
+  const c = makeChar();
+  c.requestMelee(0);                        // swing toward +Z
+  ok('melee enters the melee state', c.state === 'melee', `state=${c.state}`);
+  run(c, TUNING.meleeLungeTime, {});
+  ok('melee lunges forward', c.position.z > 0.3, `z=${c.position.z.toFixed(2)}`);
+  ok('melee lunges along the swing, not sideways', Math.abs(c.position.x) < 1e-6);
+
+  const travel = c.position.z;
+  run(c, 0.5, {});
+  ok('the lunge stops rather than sliding on',
+    c.position.z - travel < 0.35, `drifted ${(c.position.z - travel).toFixed(2)}m after`);
+}
+{
+  // Direction, separately from distance.
+  const c = makeChar();
+  c.requestMelee(Math.PI / 2);              // swing toward +X
+  run(c, TUNING.meleeLungeTime, {});
+  ok('melee at PI/2 lunges +X', c.position.x > 0.3, `x=${c.position.x.toFixed(2)}`);
+  ok('melee at PI/2 does not lunge in Z', Math.abs(c.position.z) < 1e-6);
+}
+{
+  // Control has to come back quickly. The clips run 2.3-3.2s; being locked for
+  // that long is what made one swing feel like a commitment.
+  const c = makeChar();
+  c.requestMelee(0);
+  run(c, TUNING.meleeRecover + 0.02, {});
+  ok('control returns at meleeRecover, not at the end of the clip',
+    c.state !== 'melee', `state=${c.state} after ${TUNING.meleeRecover}s`);
+}
+{
+  // CHAINING. Three flicks inside the combo window must give three DIFFERENT
+  // swings, in order. Testing only that "a second melee fires" would pass with
+  // the combo index stuck at zero, which is the same thing as having no combo.
+  // Read the combo INDEX rather than the playing action: this harness gives
+  // Character a stub model with no clips, so there is no action to inspect —
+  // but the chaining decision is the thing under test either way.
+  const c = makeChar();
+  const seen = [];
+  for (let i = 0; i < 3; i++) {
+    c.requestMelee(0);
+    seen.push(CLIPS.meleeCombo[c._comboIndex]);
+    run(c, 0.12, {});                       // well inside comboWindow
+  }
+  ok('three chained flicks play three different swings',
+    new Set(seen).size === 3, seen.join(' -> '));
+  ok('the chain follows the authored combo order',
+    seen.join('|') === CLIPS.meleeCombo.join('|'), seen.join(' -> '));
+}
+{
+  // ...and letting the window lapse resets to the opener.
+  const c = makeChar();
+  c.requestMelee(0);
+  run(c, 0.12, {});
+  c.requestMelee(0);
+  const second = CLIPS.meleeCombo[c._comboIndex];
+  run(c, TUNING.comboWindow + 0.1, {});     // let it lapse
+  c.requestMelee(0);
+  const afterLapse = CLIPS.meleeCombo[c._comboIndex];
+  ok('a lapsed combo restarts from the opener',
+    afterLapse === CLIPS.meleeCombo[0] && second !== CLIPS.meleeCombo[0],
+    `second=${second} afterLapse=${afterLapse}`);
 }
 
 console.log('\nmodel orientation');
