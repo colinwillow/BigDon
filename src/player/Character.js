@@ -29,8 +29,13 @@ export class Character {
    * @param {THREE.Object3D} model  normalised GLB scene (feet at y=0, 1.8m tall)
    * @param {THREE.AnimationClip[]} clips
    */
-  constructor(model, clips) {
+  constructor(model, clips, collider = null) {
     this.model = model;
+    /**
+     * World collision. Optional: with no collider the world is a flat plane at
+     * y=0, which is what the headless controller tests run against.
+     */
+    this.collider = collider;
     this.anim = new AnimationController(model, clips);
     this.T = TUNING;
 
@@ -69,8 +74,16 @@ export class Character {
 
   get speedRatio() { return clamp01(this.speed / this.T.runSpeed); }
 
-  /** Flat ground for now. One place to swap in a real height query. */
-  groundAt(/* x, z */) { return 0; }
+  /**
+   * Highest ground under him, searched across the span he fell through this
+   * frame rather than only at his final position — he falls at 32 m/s^2 from a
+   * 4m apex, so a long frame covers most of a metre and a final-position-only
+   * test drops him straight through a platform.
+   */
+  groundAt(x, z, yFrom, yTo) {
+    if (!this.collider) return 0;
+    return this.collider.groundAt(x, z, this.T.radius, yFrom, yTo);
+  }
 
   // ── the verbs, called from Input ─────────────────────────────────────────
 
@@ -225,11 +238,44 @@ export class Character {
     // ── gravity + ground ─────────────────────────────────────────────────
     if (!this.grounded) this.velocity.y -= this.T.gravity * dt;
 
+    // ── horizontal, then resolve against the world ───────────────────────
+    // Split from the vertical move on purpose: resolving both at once makes a
+    // wall you are running into also cancel your fall, which reads as sticking
+    // to it mid-air.
     this.position.x += this.velocity.x * dt;
-    this.position.y += this.velocity.y * dt;
     this.position.z += this.velocity.z * dt;
+    if (this.collider) {
+      const hit = this.collider.resolve(
+        this.position, this.T.radius, this.T.height, this.T.stepHeight
+      );
+      // Kill the velocity component that went into the wall. Without this he
+      // keeps accelerating into it and squirts along the surface the instant it
+      // ends, which looks like the collision failed.
+      if (hit.nx) this.velocity.x = 0;
+      if (hit.nz) this.velocity.z = 0;
+      this.wallContact = hit.hitWall;
+      if (hit.stepped) this.grounded = true;
+    }
 
-    const groundY = this.groundAt(this.position.x, this.position.z);
+    // ── vertical ─────────────────────────────────────────────────────────
+    const yBefore = this.position.y;
+    this.position.y += this.velocity.y * dt;
+
+    if (this.collider && this.velocity.y > 0) {
+      const ceil = this.collider.ceilingAt(
+        this.position.x, this.position.z, this.T.radius, yBefore + this.T.height
+      );
+      if (this.position.y + this.T.height > ceil) {
+        this.position.y = ceil - this.T.height;
+        this.velocity.y = 0;   // bonk
+      }
+    }
+
+    // Only look for ground while falling or already resting on it; searching
+    // upward on the way up would snap him onto the platform he is rising past.
+    const groundY = this.velocity.y > 0
+      ? -Infinity
+      : this.groundAt(this.position.x, this.position.z, yBefore, this.position.y);
     if (this.position.y <= groundY) {
       this.position.y = groundY;
       if (!wasGrounded && this.velocity.y < -1) {

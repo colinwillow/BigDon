@@ -7,12 +7,14 @@
 
 import * as THREE from '../../vendor/three/three.module.js';
 import { flatMaterial } from '../render/materials.js';
+import { Collider } from './Collider.js';
 
 /** Grid squares are exactly 1 metre, so you can count them to check speed. */
 const GRID_STEP = 1;
 const GRID_EXTENT = 60;
 
 export function buildWorld(scene) {
+  const collider = new Collider();
   scene.background = new THREE.Color(0xececf2);
   // Fog matched to the background so the grid dissolves instead of ending at a
   // hard visible edge.
@@ -76,6 +78,21 @@ export function buildWorld(scene) {
     m.castShadow = true;
     m.receiveShadow = true;
     group.add(m);
+    collider.addBox(x, y, z, w, h, d);
+  }
+
+  // ── a staircase ─────────────────────────────────────────────────────────
+  // Four 0.3m risers. Below the controller's stepHeight, so he should walk
+  // straight up without jumping and without catching on any edge — the single
+  // most telling test of whether step-up is working.
+  for (let i = 0; i < 4; i++) {
+    const h = 0.3 * (i + 1);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1.6, h, 1.2), blockMat);
+    m.position.set(-7.5, h / 2, 4.0 + i * 1.2);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    group.add(m);
+    collider.addBox(-7.5, h / 2, 4.0 + i * 1.2, 1.6, h, 1.2);
   }
 
   // ── a pillar ring ───────────────────────────────────────────────────────
@@ -89,8 +106,12 @@ export function buildWorld(scene) {
     m.castShadow = true;
     m.receiveShadow = true;
     group.add(m);
+    // Boxed, not round: a 10-sided pillar is close enough to its own bounding
+    // box that the difference is invisible, and it keeps the whole world on one
+    // exact collision path.
+    collider.addBox(Math.sin(a) * 16, 1.6, Math.cos(a) * 16, 0.44, 3.2, 0.44);
   }
 
   scene.add(group);
-  return group;
+  return { group, collider };
 }

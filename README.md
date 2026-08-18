@@ -43,8 +43,11 @@ src/
   camera/FollowCamera.js
   render/materials.js  flat self-lit materials + lighting
   world/World.js    the white box world
+  world/Collider.js AABB collision: walls, platforms, step-up, ceilings
 tests/
-  locomotion.mjs    31 deterministic controller checks (no browser)
+  locomotion.mjs    51 deterministic controller checks (no browser)
+  collision.mjs     16 collision checks (no browser)
+  gestures.mjs      real touch events against the sticks
   smoke.mjs         boots the real thing in Chromium
 ```
 

@@ -31,7 +31,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 200);
 
 const lights = setupLights(scene);
-buildWorld(scene);
+const { collider } = buildWorld(scene);
 
 const follow = new FollowCamera(camera);
 
@@ -62,7 +62,7 @@ async function boot() {
   const loaded = await loadCharacter('models/donny_game.glb');
   scene.add(loaded.root);
 
-  character = new Character(loaded.root, loaded.clips);
+  character = new Character(loaded.root, loaded.clips, collider);
 
   // Tick the animation once so the skeleton is genuinely posed, THEN scale him
   // to 1.8m and sit him on the floor. See normaliseHeight() for why the

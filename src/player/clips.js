@@ -123,6 +123,16 @@ export const TUNING = {
   turnRate: 15.0,       // rad/sec when moving
   turnRateAim: 20.0,    // ...and when the aim stick owns the facing
 
+  // ── body, for collision ──────────────────────────────────────────────────
+  // He is a vertical cylinder. The radius is deliberately narrower than his
+  // shoulders — a collider as wide as the widest pose catches on every doorway
+  // and reads as clumsiness, whereas one a little too slim is never noticed.
+  radius: 0.32,
+  height: 1.75,
+  // Anything this low is walked onto instead of collided with. 0.42 clears the
+  // 0.3m stairs and the 0.45m block edges without letting him stroll up a wall.
+  stepHeight: 0.42,
+
   // ── jump ─────────────────────────────────────────────────────────────────
   // 16 m/s at 32 m/s^2 is a 4.0m apex and a 1.0s hang — over four times the old
   // height, and about 2.2 of his own heights. Robits' own jump is 5 heights

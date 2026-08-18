@@ -43,6 +43,7 @@ Two consequences worth knowing:
 ```sh
 npm start            # static server on :8123
 node tests/locomotion.mjs   # 51 controller checks, no browser needed
+node tests/collision.mjs    # 16 collision checks, no browser needed
 node tests/smoke.mjs        # boots the real game in Chromium
 node tests/gestures.mjs     # drives the sticks with real touch events
 npm test                    # all three
@@ -142,6 +143,29 @@ camera, so **his** right hand is at world `-X` — the mirror. His right is loca
 maths can be tested headlessly against a synthetic rig — `loadCharacter.js`
 imports `GLTFLoader`, which imports the bare specifier `three` and cannot be
 loaded into node.
+
+## Collision
+
+`src/world/Collider.js`. Everything solid is an axis-aligned box, so this is
+exact — no physics engine, no broadphase. The player is a vertical CYLINDER
+(circle in XZ plus a height); a capsule would only matter on slopes and there
+are none.
+
+Three things carry the feel, and all three have a test:
+
+* **Step-up.** Anything within `stepHeight` (0.42m) is walked onto rather than
+  collided with. A kerb you have to jump over is infuriating.
+* **Swept ground.** He jumps 4m and falls at 32 m/s^2, so a long frame covers
+  most of a metre. `groundAt` takes the whole span he moved through — testing
+  only the final position drops him through platforms.
+* **Axis-of-least-penetration push-out.** Pushing along the vector to the box's
+  closest point flicks him diagonally around corners; resolving along the
+  shallowest axis slides him along the wall.
+
+The world registers its own geometry (`buildWorld` returns `{group, collider}`),
+so the visual and collision worlds cannot drift apart. `Character` takes the
+collider as an optional third argument — without one the world is a flat plane
+at y=0, which is what the headless controller tests run against.
 
 ## Input is ported, not invented
 
