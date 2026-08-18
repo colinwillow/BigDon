@@ -9,6 +9,7 @@
 
 import * as THREE from '../vendor/three/three.module.js';
 import { Character } from '../src/player/Character.js';
+import { measureYawOffset } from '../src/player/rig.js';
 import { TUNING } from '../src/player/clips.js';
 import { wrapAngle } from '../src/core/math.js';
 
@@ -96,11 +97,12 @@ console.log('\nfacing');
     near(wrapAngle(c.facing), Math.PI / 2, 0.02), `facing=${c.facing.toFixed(3)}`);
   ok('aim mode still travels -Z', c.position.z < -1, `z=${c.position.z.toFixed(2)}`);
 
-  // Facing +X while travelling -Z means moving to his RIGHT. If this comes out
-  // -PI/2 the strafe blend plays the left clip while he slides right, which
-  // looks like the animation is broken rather than the maths.
+  // Facing +X (forward=+X) puts his RIGHT at +Z — stand facing +X with +Y up and
+  // your right hand is at +Z. So travelling -Z is moving to his LEFT, which is
+  // local +PI/2. Get this backwards and the blend plays the left clip while he
+  // slides right; it reads as the animation being broken rather than the maths.
   const local = c._localMoveAngle();
-  ok('travel is on his right (+PI/2 local)', near(local, Math.PI / 2, 0.05),
+  ok('travel is on his left (+PI/2 local)', near(local, Math.PI / 2, 0.05),
     `local=${local.toFixed(3)}`);
 }
 
@@ -176,14 +178,39 @@ console.log('\nblend tree');
   void t;
 }
 {
-  const c = makeChar();
-  run(c, 1.0, { moveZ: -1, aiming: true, aimYaw: Math.PI / 2 });
-  c.update(1 / 60, { moveX: 0, moveZ: -1, aiming: true, aimYaw: Math.PI / 2 });
-  ok('strafing right asks for the RIGHT strafe clip',
-    (c.anim.target.get('right_strafe') || 0) > 0.5,
-    `weights=${[...c.anim.target].map(([k, v]) => k + ':' + v.toFixed(2)).join(' ')}`);
-  ok('strafing right does NOT ask for the left strafe clip',
-    (c.anim.target.get('left_strafe') || 0) < 0.01);
+  // BOTH directions get pinned, because a suite that only checks one passes
+  // happily with the left and right clips swapped — which is exactly the bug
+  // this file shipped with. Facing +X puts his right at +Z.
+  const strafe = (aimYaw, moveZ) => {
+    const c = makeChar();
+    run(c, 1.0, { moveZ, aiming: true, aimYaw });
+    c.update(1 / 60, { moveX: 0, moveZ, aiming: true, aimYaw });
+    return c.anim.target;
+  };
+
+  const toHisLeft = strafe(Math.PI / 2, -1);   // faces +X, travels -Z
+  ok('travelling to his left plays the LEFT strafe',
+    (toHisLeft.get('left_strafe') || 0) > 0.5,
+    `weights=${[...toHisLeft].map(([k, v]) => k + ':' + v.toFixed(2)).join(' ')}`);
+  ok('travelling to his left does not touch the right strafe',
+    (toHisLeft.get('right_strafe') || 0) < 0.01);
+
+  const toHisRight = strafe(Math.PI / 2, 1);   // faces +X, travels +Z
+  ok('travelling to his right plays the RIGHT strafe',
+    (toHisRight.get('right_strafe') || 0) > 0.5,
+    `weights=${[...toHisRight].map(([k, v]) => k + ':' + v.toFixed(2)).join(' ')}`);
+  ok('travelling to his right does not touch the left strafe',
+    (toHisRight.get('left_strafe') || 0) < 0.01);
+
+  // And backwards, so the F/B pair is pinned too.
+  const backing = strafe(0, 1);                // faces +Z, travels +Z... forward
+  ok('travelling along his facing plays the forward run',
+    (backing.get('running') || 0) > 0.5,
+    `weights=${[...backing].map(([k, v]) => k + ':' + v.toFixed(2)).join(' ')}`);
+  const reversing = strafe(0, -1);             // faces +Z, travels -Z
+  ok('travelling against his facing plays the BACK run',
+    (reversing.get('standing_run_back') || 0) > 0.5,
+    `weights=${[...reversing].map(([k, v]) => k + ':' + v.toFixed(2)).join(' ')}`);
 }
 {
   // Phase must advance with DISTANCE, not time — that is what stops foot
@@ -197,6 +224,44 @@ console.log('\nblend tree');
   ok('phase does not advance while standing still', near(c.anim.phase, stopped, 1e-9),
     `phase=${c.anim.phase} stopped=${stopped}`);
   ok('phase advanced while moving', moved > 0);
+}
+
+console.log('\nmodel orientation');
+{
+  // The controller checks above all use a bare Object3D, so NONE of them can
+  // see which way the actual model points — which is how a 180-degree facing
+  // error shipped while every one of them passed. These test the measurement
+  // itself, against synthetic hips, with no GLB and no browser.
+  const rig = (leftPos, rightPos) => {
+    const root = new THREE.Object3D();
+    const L = new THREE.Bone(); L.name = 'mixamorig_LeftUpLeg'; L.position.set(...leftPos);
+    const R = new THREE.Bone(); R.name = 'mixamorig_RightUpLeg'; R.position.set(...rightPos);
+    root.add(L); root.add(R);
+    return root;
+  };
+
+  // Big Don's layout: his left hip sits at +X, so he faces +Z already and needs
+  // no correction. The old right-x-up cross product returned PI here, spun him
+  // around, and made him moonwalk.
+  ok('left hip at +X => faces +Z => no correction',
+    near(measureYawOffset(rig([1, 0, 0], [-1, 0, 0])), 0, 1e-6),
+    `offset=${measureYawOffset(rig([1, 0, 0], [-1, 0, 0])).toFixed(4)}`);
+
+  // The mirror image must come out half a turn away, not zero.
+  ok('left hip at -X => faces -Z => half a turn',
+    near(Math.abs(measureYawOffset(rig([-1, 0, 0], [1, 0, 0]))), Math.PI, 1e-6));
+
+  // A rig authored facing sideways resolves to a quarter turn, which pins the
+  // SIGN as well as the magnitude — the two cases above are symmetric and would
+  // both still pass with the cross product's operands swapped.
+  ok('left hip at +Z => faces -X => +quarter turn',
+    near(measureYawOffset(rig([0, 0, 1], [0, 0, -1])), Math.PI / 2, 1e-6),
+    `offset=${measureYawOffset(rig([0, 0, 1], [0, 0, -1])).toFixed(4)}`);
+
+  // No recognisable hips must mean "leave it alone", never a guess: a wrong
+  // guess mirrors the character, which is far harder to spot than no correction.
+  const bare = new THREE.Object3D();
+  ok('a rig with no hips gets no correction', measureYawOffset(bare) === 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

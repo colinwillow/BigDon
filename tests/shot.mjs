@@ -24,7 +24,13 @@ await page.evaluate(() => {
     aimYaw: window.__drive.aimYaw || 0,
   });
 });
-await page.waitForTimeout(900);
+// Recentre the camera behind him before shooting. The camera does NOT swing
+// itself around (that is deliberate — see FollowCamera.recentre), so without
+// this the shot is taken from whatever angle boot left it at, and a character
+// running TOWARD the lens reads at a glance as one running backwards.
+await page.waitForTimeout(700);
+await page.evaluate(() => window.follow.recentre(window.character));
+await page.waitForTimeout(500);
 await page.screenshot({ path: 'scratch/02-run.png' });
 const st = await page.evaluate(() => ({
   pos: [+character.position.x.toFixed(2), +character.position.z.toFixed(2)],

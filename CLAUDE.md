@@ -86,6 +86,33 @@ Both of these cost real debugging time; they are documented at the call sites.
 Because of these, `normaliseHeight()` runs *after* the first `anim.update()`, so
 it measures what is actually on screen.
 
+## Handedness: derive it, never guess it
+
+Two bugs shipped here at once and hid each other, which is the thing to watch
+for. The model was rotated half a turn (`measureYawOffset` used `right x up`
+where forward is `up x right`), and the blend tree's left and right strafes were
+swapped. Each one alone is obvious; together the strafes looked *fine* and only
+running forwards looked wrong, so the report was "he moonwalks" and the strafe
+bug was invisible.
+
+The fix for both is the same discipline — check the handedness against three's
+own camera basis rather than intuition:
+
+* Its right is `+X`, its up is `+Y`, and it looks down `-Z`.
+* So `up x right = (0,1,0) x (1,0,0) = (0,0,-1)` — that is forward.
+* `right x up` gives `+Z`, the exact negation.
+
+And for the strafe mapping: put a camera at `(0,0,5)` looking at the origin, and
+world `+X` lands on the right of the screen. A character facing `+Z` faces that
+camera, so **his** right hand is at world `-X` — the mirror. His right is local
+`-X`, which is local angle `-PI/2`.
+
+`tests/locomotion.mjs` now pins both directions of every axis, and
+`src/player/rig.js` is split out of `loadCharacter.js` purely so the orientation
+maths can be tested headlessly against a synthetic rig — `loadCharacter.js`
+imports `GLTFLoader`, which imports the bare specifier `three` and cannot be
+loaded into node.
+
 ## Input is ported, not invented
 
 `src/input/Joystick.js` came from Peggy, which got it from Robits, and it is the

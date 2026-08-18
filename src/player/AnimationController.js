@@ -29,8 +29,19 @@ import { clamp, clamp01, damp } from '../core/math.js';
 
 /** The four cardinals of the blend tree, in screen-ish order. */
 const DIRS = ['F', 'R', 'B', 'L'];
-/** Their angles in the character's local frame: 0 = forward, +x = his right. */
-const DIR_ANGLE = { F: 0, R: Math.PI / 2, B: Math.PI, L: -Math.PI / 2 };
+/**
+ * Their angles in the character's local frame, measured as atan2(x, z) with
+ * forward = local +Z.
+ *
+ * His RIGHT is local -Z-cross-up = local -X, so right is -PI/2 and left is
+ * +PI/2. Derive this, never guess it: put a camera at (0,0,5) looking at the
+ * origin and world +X lands on the right of the screen; a character facing +Z
+ * is facing that camera, so his own right hand is at world -X — the mirror of
+ * the screen. Getting it backwards swaps the strafe clips, and because a 180
+ * degree error in the model's facing swaps them right back, the two bugs hide
+ * each other and the character only looks wrong when he runs forwards.
+ */
+const DIR_ANGLE = { F: 0, R: -Math.PI / 2, B: Math.PI, L: Math.PI / 2 };
 
 export class AnimationController {
   /**
