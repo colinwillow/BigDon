@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover + the safe-area insets in the CSS is what keeps the
+     sticks clear of the home indicator and the notch on a real phone. -->
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#ececf2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Big Don">
+<title>Big Don</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<!-- ── TOUCH CONTROLS ──────────────────────────────────────────────────────
+     Two invisible half-screen zones. The visible ring and knob are moved to
+     wherever the thumb lands, so there is nothing to aim for and nothing to
+     look at. -->
+<div id="zone-left" class="stick-zone"></div>
+<div id="zone-right" class="stick-zone"></div>
+<div id="ring-left" class="stick-ring"></div>
+<div id="knob-left" class="stick-knob"></div>
+<div id="ring-right" class="stick-ring"></div>
+<div id="knob-right" class="stick-knob"></div>
+
+<!-- ── HUD ─────────────────────────────────────────────────────────────── -->
+<div id="hud">
+  <span id="hud-state">—</span>
+  <span id="hud-speed">0.0 m/s</span>
+  <span id="hud-fps">— fps</span>
+  <span id="hud-gesture">—</span>
+  <span id="hud-clips"></span>
+</div>
+
+<div id="legend">
+  <div class="legend-touch">
+    <b>LEFT</b> move · flick roll · tap centre camera<br>
+    <b>RIGHT</b> push aim/shoot · flick melee · tap jump
+  </div>
+  <div class="legend-kbm">
+    <b>WASD</b> move · <b>SPACE</b> jump · <b>SHIFT</b> roll · <b>V</b> melee<br>
+    <b>drag</b> camera · <b>Q</b>/<b>E</b> turn · <b>R</b> centre
+  </div>
+</div>
+
+<div id="boot"><div class="boot-inner"><p>loading…</p></div></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

@@ -1,2 +1,51 @@
-# BigDon
-Repository for the Big Don Mobile Game
+# Big Don
+
+A mobile-first, toon-shaded twin-stick action game. Runs in the browser, no build
+step — `three` is vendored and the browser loads `src/` as written.
+
+```sh
+npm start     # http://localhost:8123
+npm test
+```
+
+## Controls
+
+|            | left stick            | right stick                    |
+| ---------- | --------------------- | ------------------------------ |
+| **push**   | walk / run            | aim — he turns, camera follows  |
+| **flick**  | dodge roll            | melee (chains into a combo)     |
+| **tap**    | recentre the camera   | jump                            |
+
+Push the right stick past the trigger zone and he shoots in that direction.
+Ease the left stick out for a walk; push past ~72% for a run.
+
+On a laptop: `WASD` move, `SPACE` jump, `SHIFT` roll, `V` melee, drag to look,
+`Q`/`E` turn, `R` recentre.
+
+## Layout
+
+```
+index.html          importmap + the touch-control DOM
+styles.css
+vendor/three/       three r160, vendored — do not replace with a bundler
+models/             donny_game.glb — 72 in-place animation tracks
+src/
+  core/math.js      dt-correct damping, angle helpers
+  input/
+    Joystick.js     the virtual stick + gesture recognition (ported from Peggy)
+    Input.js        binds the two sticks to the character's verbs
+  player/
+    clips.js        which track drives what, plus all the movement tuning
+    AnimationController.js   the weighted blend tree
+    Character.js    movement + state machine
+    loadCharacter.js  load, normalise, toon-ify
+  camera/FollowCamera.js
+  render/toon.js    toon material, ink outline, lighting
+  world/World.js    the white box world
+tests/
+  locomotion.mjs    31 deterministic controller checks (no browser)
+  smoke.mjs         boots the real thing in Chromium
+```
+
+See `CLAUDE.md` for the traps this GLB sets and why the input layer is shaped the
+way it is.
