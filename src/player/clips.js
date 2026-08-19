@@ -28,9 +28,12 @@ export const CLIPS = {
   // ── air ──────────────────────────────────────────────────────────────────
   // ONE clip for the whole airborne arc. The hang time is about a second, which
   // is not long enough to read a takeoff -> rise -> fall sequence: a three-part
-  // blend just looks like it is stuttering between poses. A single held pose is
-  // legible and does not fight the jump's length.
-  fall: 'falling',
+  // blend just looks like it is stuttering between poses.
+  //
+  // `floating`, NOT `falling`: falling is a skydiver, face-down and spread,
+  // which is a pose for a long drop. Floating is upright with the legs under
+  // him, which is what a jump looks like.
+  fall: 'floating',
   land: 'landing',
   doubleJump: 'jump_flip',
 
@@ -124,6 +127,14 @@ export const CLIP_TUNING = {
 
   // The slide covers real ground, so it runs close to authored speed.
   run_slide: { timeScale: 1.5 },
+
+  // The flip opens with a crouch-and-wind-up on the ground, which is wrong for
+  // a DOUBLE jump — he is already airborne, so there is nothing to push off.
+  // The clip is 24fps / 23 frames: the windup runs to about frame 7 and the
+  // flip proper is frames 7-18, so this starts at the launch. (Cutting the 15
+  // frames that windup *looks* like would take out the first half of the flip
+  // itself — see scratch/flip-strip.png.)
+  jump_flip: { start: 0.28, timeScale: 1.15 },
 
   // These takes are already short (0.79-1.21s). A light speed-up keeps them
   // punchy without turning the wind-up into a twitch.

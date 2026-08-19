@@ -239,13 +239,15 @@ export class Character {
     );
     if (!w) return false;
     this.cover = w;
-    this.facing = Math.atan2(-w.nx, -w.nz);
     this._hangT = w.nz !== 0 ? this.position.x : this.position.z;
     this._coverPullT = 0;
-    // Lean toward whichever way he was already travelling along the wall, so
-    // the pose matches the momentum he arrived with.
+    // Face ALONG the wall, not into it. He flattens against it side-on, so his
+    // facing is the direction he will travel — set from whichever way he was
+    // already moving along it, defaulting to +tangent.
     const a = this._alongSurface(w);
-    this._coverSideHeld = Math.abs(a.input) > 0.1 ? a.side : 'right';
+    this._coverDir = a.input < -0.1 ? -1 : 1;
+    this.facing = this._facingAlong(w, this._coverDir);
+    this._coverSideHeld = this._wallSide(this.facing, w);
     this._enter('cover');
     this._oneShotEnds = this.anim.play(
       this._coverSideHeld === 'left' ? CLIPS.coverInL : CLIPS.coverInR
@@ -269,11 +271,32 @@ export class Character {
     const tx = n.nz !== 0 ? 1 : 0;
     const tz = n.nz !== 0 ? 0 : 1;
     const input = this._moveWorld.x * tx + this._moveWorld.z * tz;
-    // His right, given forward = (sin f, cos f), is (-cos f, sin f).
-    const rx = -Math.cos(this.facing);
-    const rz = Math.sin(this.facing);
-    const side = (tx * rx + tz * rz) * input >= 0 ? 'right' : 'left';
-    return { tx, tz, input, side };
+    return { tx, tz, input };
+  }
+
+  /**
+   * Which sided cover clip to play, given a facing.
+   *
+   * The `_left` and `_right` takes are authored facing OPPOSITE directions —
+   * they mean "the wall is on my left" and "the wall is on my right", not a
+   * lean. So he stands PARALLEL to the wall facing along it, and the side is
+   * decided by geometry, not by which way the stick went.
+   *
+   * With forward = (sin f, cos f), his right is (-cos f, sin f). The wall lies
+   * in direction -n from him (n is the outward normal, pointing at him), so the
+   * wall is on his left exactly when n . right > 0.
+   */
+  _wallSide(facing, n) {
+    const rx = -Math.cos(facing);
+    const rz = Math.sin(facing);
+    return (n.nx * rx + n.nz * rz) > 0 ? 'left' : 'right';
+  }
+
+  /** Facing that runs ALONG a surface in the direction `sign`. */
+  _facingAlong(n, sign) {
+    const tx = n.nz !== 0 ? 1 : 0;
+    const tz = n.nz !== 0 ? 0 : 1;
+    return Math.atan2(tx * sign, tz * sign);
   }
 
   leaveCover() {
@@ -434,9 +457,13 @@ export class Character {
             this._hangT + a.input * this.T.coverSneakSpeed * dt,
             w.minT + pad, w.maxT - pad
           );
-          // Remember which way he last moved: that is the shoulder he leans on,
-          // and it picks which sided cover clips play.
-          this._coverSideHeld = a.side;
+          // He turns to face the way he is travelling along the wall, and the
+          // sided clip follows from which side the wall then sits on. Letting
+          // go leaves him facing that way, which is what makes "shimmy left,
+          // release, and he is in cover_idle_left" work.
+          this._coverDir = a.input > 0 ? 1 : -1;
+          this.facing = this._facingAlong(w, this._coverDir);
+          this._coverSideHeld = this._wallSide(this.facing, w);
         }
         if (w.nx) { this.position.x = w.x; this.position.z = this._hangT; }
         else { this.position.x = this._hangT; this.position.z = w.z; }

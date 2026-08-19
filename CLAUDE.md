@@ -243,8 +243,35 @@ Two clip-level rules learned the hard way:
   mid-swing while the jab was barely touched, so most of the strike set was
   never actually visible.
 
-The airborne pose is ONE clip. A ~1s hang is not long enough to read a
-takeoff/rise/fall sequence; blending three across it looks like a stutter.
+The airborne pose is ONE clip, and it is `floating`, not `falling` — falling is
+a face-down skydive, which is a pose for a long drop; floating is upright with
+the legs under him, which is what a jump looks like. A ~1s hang is not long
+enough to read a takeoff/rise/fall sequence; blending three across it looks like
+a stutter.
+
+### Cover: the sided clips face opposite ways
+
+`cover_idle_left` and `cover_idle_right` are NOT a lean — they are authored
+facing 180 degrees apart, and they mean *the wall is on my left* / *on my
+right*. So he stands PARALLEL to the wall, facing along it, and turns to face
+whichever way he travels; he never faces into or away from it. Facing him into
+the wall (the first version) made him appear to spin round every time the sided
+clip swapped.
+
+The side is then pure geometry, not stick direction. With forward = `(sin f,
+cos f)` his right is `(-cos f, sin f)`, and the wall lies along `-n` from him,
+so the wall is on his left exactly when `n . right > 0`. See `_wallSide`.
+
+Releasing the stick keeps the last facing and side, which is what makes "shimmy
+left, let go, and he settles into `cover_idle_left`" work.
+
+### Reading frame counts off a clip
+
+These are 24fps. When a clip needs its head trimmed, measure it rather than
+guessing: `jump_flip` looks like it has ~15 frames of ground windup, but the
+windup actually ends at frame 7 and frames 7-18 are the flip itself, so cutting
+15 would remove half the trick. `CLIP=jump_flip node tests/clipstrip.mjs`
+renders a filmstrip to check against.
 
 ### Hanging only matters above the jump
 
