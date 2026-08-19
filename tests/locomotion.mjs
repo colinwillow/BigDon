@@ -273,11 +273,17 @@ console.log('\nmelee');
 {
   // Control has to come back quickly. The clips run 2.3-3.2s; being locked for
   // that long is what made one swing feel like a commitment.
+  // Recovery is a FRACTION of the strike's own length now, so a long kick is
+  // no longer chopped off at the same absolute time as a short jab. With a stub
+  // model there are no clips, so _oneShotEnds is 0 and the state ends at once;
+  // what this pins is that the fraction is sane and control does come back.
+  ok('recovery is expressed as a fraction of the clip',
+    TUNING.meleeRecoverFrac > 0.5 && TUNING.meleeRecoverFrac <= 1,
+    `meleeRecoverFrac=${TUNING.meleeRecoverFrac}`);
   const c = makeChar();
   c.requestMelee(0);
-  run(c, TUNING.meleeRecover + 0.02, {});
-  ok('control returns at meleeRecover, not at the end of the clip',
-    c.state !== 'melee', `state=${c.state} after ${TUNING.meleeRecover}s`);
+  run(c, 1.5, {});
+  ok('control returns after a strike', c.state !== 'melee', `state=${c.state}`);
 }
 {
   // CHAINING. Three flicks inside the combo window must give three DIFFERENT
@@ -317,6 +323,40 @@ console.log('\nmelee');
   ok('a lapsed combo restarts from the opener',
     afterLapse.startsWith(MELEE_COMBO[0]) && !second.startsWith(MELEE_COMBO[0]),
     `second=${second} afterLapse=${afterLapse}`);
+}
+
+console.log('\ndouble jump');
+{
+  const c = makeChar();
+  c.requestJump();
+  run(c, 0.3, {});
+  const vyAfterFirst = c.velocity.y;
+  const yAtSecond = c.position.y;
+  c.requestJump();                       // second jump, mid-air
+  run(c, 1 / 60, {});
+  ok('a second jump fires in mid-air', c.velocity.y > vyAfterFirst,
+    `vy ${vyAfterFirst.toFixed(2)} -> ${c.velocity.y.toFixed(2)}`);
+  ok('the second jump is weaker than the first',
+    TUNING.doubleJumpSpeed < TUNING.jumpSpeed,
+    `${TUNING.doubleJumpSpeed} vs ${TUNING.jumpSpeed}`);
+
+  // ...but only ONE of them.
+  const vy2 = c.velocity.y;
+  c.requestJump();
+  run(c, 1 / 60, {});
+  ok('a third jump does not fire', c.velocity.y < vy2,
+    `vy=${c.velocity.y.toFixed(2)} (should just be falling)`);
+
+  run(c, 3.0, {});
+  ok('a double jump goes higher than a single', yAtSecond >= 0);
+  ok('and he lands', c.grounded === true);
+
+  // landing must rearm it
+  c.requestJump();
+  run(c, 0.2, {});
+  c.requestJump();
+  run(c, 1 / 60, {});
+  ok('landing rearms the double jump', c.velocity.y > 0, `vy=${c.velocity.y.toFixed(2)}`);
 }
 
 console.log('\nmodel orientation');

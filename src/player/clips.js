@@ -26,9 +26,13 @@ export const CLIPS = {
   runR: 'strafe_right',
 
   // ── air ──────────────────────────────────────────────────────────────────
-  jumpUp: 'jump_still',
+  // ONE clip for the whole airborne arc. The hang time is about a second, which
+  // is not long enough to read a takeoff -> rise -> fall sequence: a three-part
+  // blend just looks like it is stuttering between poses. A single held pose is
+  // legible and does not fight the jump's length.
   fall: 'falling',
   land: 'landing',
+  doubleJump: 'jump_flip',
 
   // ── one-shots ────────────────────────────────────────────────────────────
   slide: 'run_slide',            // left-stick flick — the slide tackle
@@ -123,14 +127,18 @@ export const CLIP_TUNING = {
 
   // These takes are already short (0.79-1.21s). A light speed-up keeps them
   // punchy without turning the wind-up into a twitch.
-  punch_jab: { timeScale: 1.5 },
-  punch_hook: { timeScale: 1.45 },
-  punch_elbow: { timeScale: 1.5 },
-  kick_roundhouse: { timeScale: 1.4 },
-  kick_spinning_hurricane: { timeScale: 1.35 },
-  kick: { timeScale: 1.5 },
-  kick_spin: { timeScale: 1.4 },
-  headbutt: { timeScale: 1.5 },
+  // Gentle. These were at 1.35-1.5, which combined with a fixed 0.34s recovery
+  // meant a strike was faded out before even half of it had played — the swing
+  // "started and then something else happened". Legibility beats speed here:
+  // the strikes only feel fast if you can see them land.
+  punch_jab: { timeScale: 1.25 },
+  punch_hook: { timeScale: 1.2 },
+  punch_elbow: { timeScale: 1.2 },
+  kick_roundhouse: { timeScale: 1.15 },
+  kick_spinning_hurricane: { timeScale: 1.1 },
+  kick: { timeScale: 1.25 },
+  kick_spin: { timeScale: 1.15 },
+  headbutt: { timeScale: 1.25 },
 };
 
 /**
@@ -168,6 +176,9 @@ export const TUNING = {
 
   // ── jump ─────────────────────────────────────────────────────────────────
   jumpSpeed: 16.0,      // 4.0m apex at the gravity below, ~1.0s hang
+  // The second jump is a little weaker, so a double is higher than a single but
+  // not simply twice it — otherwise the first jump stops being a decision.
+  doubleJumpSpeed: 13.5,
   gravity: 32.0,
   coyoteTime: 0.10,
   jumpBuffer: 0.14,
@@ -177,8 +188,16 @@ export const TUNING = {
   // the strike is procedural or it does not happen at all.
   meleeLungeSpeed: 11.0,
   meleeLungeTime: 0.18,
-  meleeRecover: 0.34,   // control back well before the clip's recovery tail
-  comboWindow: 0.65,
+  // Control returns at this FRACTION of the strike's own length, so every clip
+  // is nearly finished before the blend leaves it — a fixed number of seconds
+  // cut the long kicks off in the middle while barely touching the jab. A
+  // re-flick still interrupts immediately, so a combo is as fast as you flick.
+  meleeRecoverFrac: 0.86,
+  comboWindow: 0.75,
+  // Right-stick flick while running at or above this does a SLIDE TACKLE
+  // instead of a strike. Flicking the left stick while also steering with it is
+  // awkward, so the slide lives on the free thumb.
+  slideFromRunAt: 5.0,
 
   // ── ledge hang ───────────────────────────────────────────────────────────
   // The grab band is measured from the FEET, so it is directly comparable with
@@ -193,9 +212,16 @@ export const TUNING = {
   hangGrace: 0.18,        // no re-grab for this long after dropping off
 
   // ── cover / wall press ───────────────────────────────────────────────────
-  coverReach: 0.30,
+  // Cover is MAGNETIC: cheap to enter, deliberately sticky to leave. Sliding
+  // along a wall is the whole point of being on it, so the sideways deadzone is
+  // wide and only a sustained hard pull directly away releases him.
+  coverReach: 0.45,
   coverMinHeight: 1.1,    // a wall shorter than this is cover for nobody
-  coverSneakSpeed: 1.9,
+  coverSneakSpeed: 2.4,
+  coverEnterPush: 0.30,   // gentle push into a wall is enough to stick
+  coverEnterSpeed: 6.5,   // ...and you can be moving at a fair clip doing it
+  coverExitPull: 0.80,    // pulling away must be nearly full deflection
+  coverExitHold: 0.22,    // ...and held this long, so a wobble never releases
 
   // ── slide tackle (left-stick flick) ──────────────────────────────────────
   slideSpeed: 17.0,

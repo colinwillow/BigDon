@@ -93,7 +93,17 @@ async function boot() {
   }, follow);
 
   input.onJump = () => character.requestJump();
-  input.onMelee = (a) => character.requestMelee(a ?? character.facing);
+  // Right-stick flick: a slide tackle if he is already running, a strike
+  // otherwise. Flicking the LEFT stick while also steering with it is awkward,
+  // so the slide lives on the free thumb — and at speed the tackle is the move
+  // you want anyway.
+  input.onMelee = (a) => {
+    const angle = a ?? character.facing;
+    if (character.grounded && character.speed >= TUNING.slideFromRunAt) {
+      if (character.requestSlide(angle)) return;
+    }
+    character.requestMelee(angle);
+  };
   input.onSlide = (a) => character.requestSlide(a);
   input.onRecentre = () => follow.recentre(character);
 
@@ -122,8 +132,11 @@ function frame(now) {
   input.sample();
 
   // Pressing into a wall on the ground slips him into cover. Polled rather than
-  // bound to a button — every verb on this pad is already spoken for.
-  if (character.state === 'ground' && input.moveMag > 0.65 && character.speed < 2.5) {
+  // bound to a button, and deliberately cheap to trigger — cover is magnetic on
+  // the way in and sticky on the way out.
+  if (character.state === 'ground'
+      && input.moveMag > TUNING.coverEnterPush
+      && character.speed < TUNING.coverEnterSpeed) {
     character._tryCover();
   }
 

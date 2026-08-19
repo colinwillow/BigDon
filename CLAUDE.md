@@ -220,6 +220,32 @@ shoulders he is moving toward, so it stays right on every face. See
 The grab is POLLED every airborne frame rather than bound to a button — missing
 a ledge should be the level's fault, not the player's.
 
+### The verb map, after the second tuning pass
+
+* **Right-stick flick** is a SLIDE TACKLE when already running (`slideFromRunAt`),
+  a strike otherwise. Flicking the left stick while also steering with it is
+  awkward, so the slide moved to the free thumb.
+* **Jump** is the only way up a ledge. Pushing into the wall used to climb, which
+  meant shimmying at a slight angle launched him onto the top by accident.
+* **Jump from cover** launches him up the wall, which is the route from pressed
+  against it to hanging off its top.
+* **Double jump**: one air jump, playing `jump_flip`, weaker than the first so
+  the first jump stays a decision.
+
+Two clip-level rules learned the hard way:
+
+* **A one-shot's state must END it.** `stand_to_cover` was played and never
+  ended, so its overlay sat at full weight forever and scaled the cover
+  idle/sneak clips to zero — which reads exactly as "the cover animations never
+  play", not as "a one-shot leaked".
+* **Melee recovery is a FRACTION of the clip** (`meleeRecoverFrac`), never a
+  fixed number of seconds. At a fixed 0.34s the long kicks were faded out
+  mid-swing while the jab was barely touched, so most of the strike set was
+  never actually visible.
+
+The airborne pose is ONE clip. A ~1s hang is not long enough to read a
+takeoff/rise/fall sequence; blending three across it looks like a stutter.
+
 ### Hanging only matters above the jump
 
 The apex is 4.0m, so anything shorter is a hurdle and he sails clean over it.

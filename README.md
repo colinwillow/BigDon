@@ -13,8 +13,8 @@ npm test
 |            | left stick            | right stick                    |
 | ---------- | --------------------- | ------------------------------ |
 | **push**   | walk / run            | aim — he turns, camera follows  |
-| **flick**  | slide tackle          | melee (alternating-side combo)  |
-| **tap**    | recentre the camera   | jump                            |
+| **flick**  | slide tackle          | slide if running, else melee    |
+| **tap**    | recentre the camera   | jump (again in air = flip)      |
 
 Push the right stick past the trigger zone and he shoots in that direction.
 Ease the left stick out for a walk; push past ~72% for a run.
@@ -45,8 +45,8 @@ src/
   world/World.js    the white box world
   world/Collider.js AABB collision: walls, platforms, step-up, ceilings
 tests/
-  locomotion.mjs    51 deterministic controller checks (no browser)
-  collision.mjs     38 collision, ledge and cover checks (no browser)
+  locomotion.mjs    59 deterministic controller checks (no browser)
+  collision.mjs     46 collision, ledge and cover checks (no browser)
   gestures.mjs      real touch events against the sticks
   smoke.mjs         boots the real thing in Chromium
 ```

@@ -196,8 +196,13 @@ function jumpAt(c, maxSecs = 2.0) {
   const c = makeChar(wall());
   c.position.set(0, 0, -0.6); c.facing = 0;
   jumpAt(c);
-  run(c, TUNING.climbUpTime + 0.4, { moveZ: 1 });
-  ok('pushing into the wall climbs up', c.state === 'ground', `state=${c.state}`);
+  // Climbing is the JUMP button now. Pushing into the wall used to do it, which
+  // meant shimmying at a slight angle launched him onto the top by accident.
+  run(c, 0.3, { moveZ: 1 });
+  ok('pushing into the wall does NOT climb', c.state === 'hang', `state=${c.state}`);
+  c.requestJump();
+  run(c, TUNING.climbUpTime + 0.4, {});
+  ok('jump climbs up', c.state === 'ground', `state=${c.state}`);
   ok('and he ends up standing on top', Math.abs(c.position.y - 5) < 1e-3,
     `y=${c.position.y.toFixed(3)}`);
   ok('standing ON it, not balanced on the lip', c.position.z > 1,
@@ -209,8 +214,12 @@ function jumpAt(c, maxSecs = 2.0) {
   const c = makeChar(wall());
   c.position.set(0, 0, -0.6); c.facing = 0;
   jumpAt(c);
-  run(c, 0.2, { moveZ: -1 });
-  ok('pulling away lets go', c.state !== 'hang', `state=${c.state}`);
+  // Releasing is now held-and-firm, like leaving cover, so a wobble never drops
+  // you off a ledge you meant to hang on.
+  run(c, TUNING.coverExitHold * 0.5, { moveZ: -1 });
+  ok('a brief pull does not drop him', c.state === 'hang', `state=${c.state}`);
+  run(c, TUNING.coverExitHold + 0.1, { moveZ: -1 });
+  ok('a sustained pull lets go', c.state !== 'hang', `state=${c.state}`);
   run(c, 2.0, {});
   ok('and he falls to the floor', Math.abs(c.position.y) < 1e-6,
     `y=${c.position.y.toFixed(3)}`);
@@ -251,6 +260,41 @@ console.log('\ncover');
     `z drifted ${(c.position.z - z0).toFixed(4)}`);
   run(c, 0.4, { moveZ: -1 });
   ok('pulling away leaves cover', c.state !== 'cover', `state=${c.state}`);
+}
+
+{
+  // Cover must be sticky: sliding along it is the whole point, so sideways
+  // input can never release him and a brief wobble away must not either.
+  const col = new Collider().addBox(0, 1.5, 3, 6, 3, 0.6);
+  const c = makeChar(col);
+  c.position.set(0, 0, 0); c.facing = 0;
+  run(c, 1.2, { moveZ: 1 });
+  c._tryCover();
+  run(c, 1.0, { moveX: 1 });
+  ok('sliding sideways never leaves cover', c.state === 'cover', `state=${c.state}`);
+  run(c, TUNING.coverExitHold * 0.5, { moveZ: -1 });
+  ok('a brief pull away does not leave cover', c.state === 'cover', `state=${c.state}`);
+  run(c, TUNING.coverExitHold + 0.1, { moveZ: -1 });
+  ok('a sustained pull away does leave it', c.state !== 'cover', `state=${c.state}`);
+}
+{
+  // Jumping out of cover launches him UP the wall — the route from pressed
+  // against a wall to hanging off its top.
+  const col = new Collider().addBox(0, 2.5, 3, 6, 5, 4);
+  const c = makeChar(col);
+  c.position.set(0, 0, 0); c.facing = 0;
+  run(c, 1.2, { moveZ: 1 });
+  c._tryCover();
+  ok('he is in cover on the tall wall', c.state === 'cover', `state=${c.state}`);
+  c.requestJump();
+  run(c, 1 / 60, {});
+  ok('jumping leaves cover upward', c.velocity.y > 0, `vy=${c.velocity.y.toFixed(2)}`);
+  const dt = 1 / 60;
+  for (let i = 0; i < 120 && c.state !== 'hang'; i++) {
+    c.update(dt, { moveX: 0, moveZ: 0.4, aiming: false, aimYaw: 0 });
+    c.anim.update(dt);
+  }
+  ok('and that jump can reach the ledge', c.state === 'hang', `state=${c.state}`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

@@ -194,48 +194,19 @@ export class AnimationController {
   /**
    * Call once at the moment he leaves the ground.
    *
-   * ── THE TWITCH ────────────────────────────────────────────────────────────
-   * jumping_up is 0.27s long, and every action in the tree is created with
-   * three's default LoopRepeat. So the takeoff pop restarted three or four
-   * times during a single ascent, which reads exactly as "it plays the first
-   * few frames over and over". The clip has to run ONCE and then hold its last
-   * pose while the blend hands over to the falling loop.
+   * There is no takeoff clip any more — see CLIPS.fall. The whole airborne arc
+   * is one held pose, because a ~1s hang is not long enough to read a
+   * takeoff/rise/fall sequence; blending three clips across it looked like a
+   * stutter rather than a jump.
    */
   enterAir() {
-    const up = this._action(CLIPS.jumpUp);
-    if (up) {
-      up.reset();
-      up.setLoop(THREE.LoopOnce, 1);
-      up.clampWhenFinished = true;   // hold the final pose, do not snap to frame 0
-      up.timeScale = (CLIP_TUNING[CLIPS.jumpUp] && CLIP_TUNING[CLIPS.jumpUp].timeScale) || 1;
-      up.play();
-    }
     const fall = this._action(CLIPS.fall);
     if (fall) fall.setLoop(THREE.LoopRepeat, Infinity);
   }
 
-  /**
-   * Ask for an airborne pose. `vy` picks the point in the arc: the takeoff pop
-   * carries the launch, then it crossfades into the falling loop.
-   *
-   * The handover is driven by the CLIP's own progress rather than by velocity.
-   * Velocity alone made the blend depend on how high the jump was — after the
-   * jump height went up, a long ascent sat on a clip that had finished playing
-   * seconds earlier.
-   */
-  air(vy) {
-    const up = this.actions.get(CLIPS.jumpUp);
-    let pop = 0;
-    if (up) {
-      const dur = this.duration(CLIPS.jumpUp);
-      // Fade out over the last third of the pop, so it hands over mid-clip
-      // rather than landing on its clamped final frame and sitting there.
-      pop = 1 - clamp01((up.time - dur * 0.62) / Math.max(dur * 0.38, 1e-3));
-      // Once he is falling, the pop is over regardless of where the clip got to.
-      if (vy < 0) pop = Math.min(pop, clamp01(1 + vy / 3));
-    }
-    this._want(CLIPS.jumpUp, pop);
-    this._want(CLIPS.fall, 1 - pop);
+  /** Airborne pose. One clip, held. */
+  air() {
+    this._want(CLIPS.fall, 1);
   }
 
   /**

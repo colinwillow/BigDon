@@ -56,6 +56,8 @@ export class Character {
 
     this._coyote = 0;
     this._jumpBuffered = -1;
+    /** Air jumps used since leaving the ground. */
+    this._airJumps = 0;
     this._slideCooldown = 0;
     this._slideDir = new THREE.Vector3();
     this._meleeDir = new THREE.Vector3();
@@ -239,9 +241,14 @@ export class Character {
     this.cover = w;
     this.facing = Math.atan2(-w.nx, -w.nz);
     this._hangT = w.nz !== 0 ? this.position.x : this.position.z;
+    this._coverPullT = 0;
+    // Lean toward whichever way he was already travelling along the wall, so
+    // the pose matches the momentum he arrived with.
+    const a = this._alongSurface(w);
+    this._coverSideHeld = Math.abs(a.input) > 0.1 ? a.side : 'right';
     this._enter('cover');
     this._oneShotEnds = this.anim.play(
-      (this._coverSideHeld = 'right') === 'left' ? CLIPS.coverInL : CLIPS.coverInR
+      this._coverSideHeld === 'left' ? CLIPS.coverInL : CLIPS.coverInR
     );
     return true;
   }
@@ -339,11 +346,11 @@ export class Character {
         const punch = 1 - lt * lt;          // hardest on frame one, gone by the end
         this.velocity.x = this._meleeDir.x * this.T.meleeLungeSpeed * punch;
         this.velocity.z = this._meleeDir.z * this.T.meleeLungeSpeed * punch;
-        // Hand control back at meleeRecover even though the clip runs longer —
-        // the animation keeps playing into its fade, but he stops being a
-        // statue. Waiting for the full clip is what made one swing feel like a
-        // commitment.
-        if (this._stateT >= Math.min(this._oneShotEnds, this.T.meleeRecover)) {
+        // Control returns at a FRACTION of this strike's own length, so the
+        // clip is nearly finished before the blend leaves it. A fixed number of
+        // seconds cut the long kicks off mid-swing while barely touching the
+        // jab, which is why most strikes were never actually seen.
+        if (this._stateT >= this._oneShotEnds * this.T.meleeRecoverFrac) {
           this.anim.endOneShot();
           this._enter(this.grounded ? 'ground' : 'air');
         }
@@ -368,11 +375,23 @@ export class Character {
           this._hangT += a.input * this.T.shimmySpeed * dt;
         }
         this._snapToLedge();
-        // Pushing INTO the wall climbs; pulling away drops. The wall's outward
-        // normal points at him, so pushing in is movement against it.
-        const into = -(this._moveWorld.x * l.nx + this._moveWorld.z * l.nz);
-        if (into > 0.55) this.climbLedge();
-        else if (into < -0.55) this.releaseLedge();
+        // Climbing up is the JUMP button and nothing else. Pushing into the
+        // wall used to do it, which meant shimmying at a slight angle would
+        // launch him onto the top by accident — the left stick belongs to
+        // moving along the ledge.
+        if (this._jumpBuffered >= 0) {
+          this._jumpBuffered = -1;
+          this.climbLedge();
+          break;
+        }
+        // Pulling away still drops, and it is held-and-firm like leaving cover.
+        const out = this._moveWorld.x * l.nx + this._moveWorld.z * l.nz;
+        if (out > this.T.coverExitPull) {
+          this._coverPullT = (this._coverPullT || 0) + dt;
+          if (this._coverPullT >= this.T.coverExitHold) this.releaseLedge();
+        } else {
+          this._coverPullT = 0;
+        }
         break;
       }
       case 'climb': {
@@ -402,8 +421,12 @@ export class Character {
         break;
       }
       case 'cover': {
-        // Flattened against the wall: he moves only along it.
         const w = this.cover;
+        // The stand_to_cover one-shot has to be ENDED, or its overlay sits at
+        // full weight forever and scales the cover idle/sneak clips to zero —
+        // which looked exactly like "the cover animations never play".
+        if (this.anim.busy && this._stateT >= this._oneShotEnds) this.anim.endOneShot();
+
         const a = this._alongSurface(w);
         const pad = this.T.radius;
         if (Math.abs(a.input) > 0.15) {
@@ -411,16 +434,32 @@ export class Character {
             this._hangT + a.input * this.T.coverSneakSpeed * dt,
             w.minT + pad, w.maxT - pad
           );
+          // Remember which way he last moved: that is the shoulder he leans on,
+          // and it picks which sided cover clips play.
+          this._coverSideHeld = a.side;
         }
         if (w.nx) { this.position.x = w.x; this.position.z = this._hangT; }
         else { this.position.x = this._hangT; this.position.z = w.z; }
         this.velocity.set(0, 0, 0);
+
+        // ── sticky exit ────────────────────────────────────────────────────
+        // Cover is magnetic: sliding along it is the whole point, so sideways
+        // input must never release him and a brief wobble away must not either.
+        // Only a near-full pull directly away, HELD, lets go.
         const out = this._moveWorld.x * w.nx + this._moveWorld.z * w.nz;
-        if (out > 0.55) this.leaveCover();
+        if (out > this.T.coverExitPull) {
+          this._coverPullT = (this._coverPullT || 0) + dt;
+          if (this._coverPullT >= this.T.coverExitHold) this.leaveCover();
+        } else {
+          this._coverPullT = 0;
+        }
         break;
       }
       case 'air':
         this._accelerate(dt, this._moveWorld, wantSpeed, this.T.airControl);
+        // The flip is a one-shot over the top of the air pose; end it when the
+        // clip is done or he keeps flipping all the way down.
+        if (this.anim.busy && this._stateT >= this._oneShotEnds) this.anim.endOneShot();
         // Catching a ledge is polled, not asked for: requiring a button here
         // means missing the grab is the player's fault rather than the level's.
         this._tryGrabLedge(this._now);
@@ -431,16 +470,39 @@ export class Character {
     }
 
     // ── jump ─────────────────────────────────────────────────────────────
-    const canJump = (this.grounded || this._coyote > 0)
-      && this.state !== 'slide' && this.state !== 'melee'
-      && this.state !== 'hang' && this.state !== 'climb' && this.state !== 'cover';
-    if (this._jumpBuffered >= 0 && canJump) {
+    const busy = this.state === 'slide' || this.state === 'melee' || this.state === 'climb';
+    const canGroundJump = (this.grounded || this._coyote > 0) && !busy;
+    // The second jump is available in mid-air once, and plays the flip.
+    const canAirJump = !this.grounded && !busy && this._airJumps < 1
+      && this.state !== 'hang' && this.state !== 'cover';
+
+    // Jumping off a wall you are covering behind launches you UP it, so the
+    // airborne ledge poll can catch the top. That is the whole route from
+    // "pressed against a wall" to "hanging off it".
+    if (this._jumpBuffered >= 0 && this.state === 'cover') {
+      this.cover = null;
+      this._coverPullT = 0;
+      this.velocity.y = this.T.jumpSpeed;
+      this.grounded = false;
+      this._jumpBuffered = -1;
+      this._airJumps = 0;
+      this.anim.endOneShot();
+      this.anim.enterAir();
+      this._enter('air');
+    } else if (this._jumpBuffered >= 0 && canGroundJump) {
       this.velocity.y = this.T.jumpSpeed;
       this.grounded = false;
       this._coyote = 0;
       this._jumpBuffered = -1;
+      this._airJumps = 0;
       this.anim.endOneShot();
       this.anim.enterAir();
+      this._enter('air');
+    } else if (this._jumpBuffered >= 0 && canAirJump) {
+      this.velocity.y = this.T.doubleJumpSpeed;
+      this._jumpBuffered = -1;
+      this._airJumps++;
+      this._oneShotEnds = this.anim.play(CLIPS.doubleJump);
       this._enter('air');
     }
 
@@ -514,6 +576,7 @@ export class Character {
       }
       this.velocity.y = 0;
       this.grounded = true;
+      this._airJumps = 0;
       this._coyote = this.T.coyoteTime;
     } else {
       this.grounded = false;
@@ -589,12 +652,12 @@ export class Character {
     if (a.busy) {
       // An overlay is playing; the tree still gets asked for a pose so the
       // blend underneath is the right one when the overlay fades out.
-      if (!this.grounded) a.air(this.velocity.y);
+      if (!this.grounded) a.air();
       else a.locomotion(this.speed, this._localMoveAngle(), this.speed * dt);
       return;
     }
     if (!this.grounded) {
-      a.air(this.velocity.y);
+      a.air();
     } else {
       a.locomotion(this.speed, this._localMoveAngle(), this.speed * dt);
     }
