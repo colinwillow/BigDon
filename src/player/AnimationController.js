@@ -238,6 +238,25 @@ export class AnimationController {
     this._want(CLIPS.fall, 1 - pop);
   }
 
+  /**
+   * Hanging from a ledge. `along` is the shimmy input in the edge's own frame,
+   * -1..1, so the sided clips are chosen by which way he is actually sliding
+   * rather than by which way the stick points on screen.
+   */
+  hang(along) {
+    const mag = Math.min(Math.abs(along), 1);
+    this._want(CLIPS.hangIdle, 1 - mag);
+    if (along > 0) this._want(CLIPS.hangShimmyR, mag);
+    else if (along < 0) this._want(CLIPS.hangShimmyL, mag);
+  }
+
+  /** Pressed against a wall. Same convention as hang(). */
+  cover(along, side) {
+    const mag = Math.min(Math.abs(along), 1);
+    this._want(side === 'left' ? CLIPS.coverIdleL : CLIPS.coverIdleR, 1 - mag);
+    if (mag > 0) this._want(side === 'left' ? CLIPS.coverSneakL : CLIPS.coverSneakR, mag);
+  }
+
   // ── one-shots ─────────────────────────────────────────────────────────────
 
   /**

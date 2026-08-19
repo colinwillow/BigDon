@@ -137,5 +137,121 @@ console.log('\nno collider');
     c.position.z > 1 && near(c.position.y, 0, 1e-9), `z=${c.position.z.toFixed(2)}`);
 }
 
+console.log('\nledge hang');
+
+// A 5m wall. This has to be TALLER than he can jump: with a 4.0m apex he sails
+// clean over anything shorter, so a 2.4m block — the first version of this
+// test — was never a ledge problem at all, it was a hurdle. Hanging is for
+// what you cannot clear.
+const wall = () => new Collider().addBox(0, 2.5, 3, 6, 5, 4);   // top 5, face z=1
+/** Jump at the wall and run until he grabs it or we give up. */
+function jumpAt(c, maxSecs = 2.0) {
+  const dt = 1 / 60;
+  c.requestJump();
+  for (let i = 0; i < Math.round(maxSecs / dt); i++) {
+    c.update(dt, { moveX: 0, moveZ: 1, aiming: false, aimYaw: 0 });
+    c.anim.update(dt);
+    if (c.state === 'hang') return true;
+  }
+  return false;
+}
+
+{
+  const c = makeChar(wall());
+  c.position.set(0, 0, -0.6);
+  c.facing = 0;
+  ok('he catches a wall he cannot jump over', jumpAt(c), `state=${c.state}`);
+  ok('he hangs below the top, not on it',
+    Math.abs(c.position.y - (5 - TUNING.hangDrop)) < 1e-6, `y=${c.position.y.toFixed(3)}`);
+  ok('he hangs off the face, not inside the wall',
+    c.position.z < 1 - TUNING.radius + 1e-6, `z=${c.position.z.toFixed(3)}`);
+  ok('gravity does not drag him off', Math.abs(c.velocity.y) < 1e-9, `vy=${c.velocity.y}`);
+  const y0 = c.position.y;
+  run(c, 1.0, {});
+  ok('he stays put while hanging', Math.abs(c.position.y - y0) < 1e-9,
+    `slid ${(c.position.y - y0).toFixed(4)}m`);
+}
+{
+  // Shimmy along the edge, and stop at its end.
+  const c = makeChar(wall());
+  c.position.set(0, 0, -0.6); c.facing = 0;
+  jumpAt(c);
+  const x0 = c.position.x;
+  run(c, 0.6, { moveX: 1 });
+  ok('shimmying moves him along the edge', c.position.x > x0 + 0.2,
+    `x ${x0.toFixed(2)} -> ${c.position.x.toFixed(2)}`);
+  run(c, 6.0, { moveX: 1 });
+  ok('shimmy stops at the end of the edge',
+    c.position.x <= 3 - TUNING.radius + 1e-6,
+    `x=${c.position.x.toFixed(3)}, edge ends at 3`);
+  ok('and he is still hanging there', c.state === 'hang', `state=${c.state}`);
+
+  // ...and the other way, so a sign error cannot pass.
+  run(c, 1.0, { moveX: -1 });
+  ok('shimmying the other way goes the other way', c.position.x < 3 - TUNING.radius - 0.3,
+    `x=${c.position.x.toFixed(3)}`);
+}
+{
+  // Climb up: pushing INTO the wall pulls him onto the top.
+  const c = makeChar(wall());
+  c.position.set(0, 0, -0.6); c.facing = 0;
+  jumpAt(c);
+  run(c, TUNING.climbUpTime + 0.4, { moveZ: 1 });
+  ok('pushing into the wall climbs up', c.state === 'ground', `state=${c.state}`);
+  ok('and he ends up standing on top', Math.abs(c.position.y - 5) < 1e-3,
+    `y=${c.position.y.toFixed(3)}`);
+  ok('standing ON it, not balanced on the lip', c.position.z > 1,
+    `z=${c.position.z.toFixed(3)}, face at z=1`);
+  ok('he is grounded up there', c.grounded === true);
+}
+{
+  // Pulling AWAY drops him.
+  const c = makeChar(wall());
+  c.position.set(0, 0, -0.6); c.facing = 0;
+  jumpAt(c);
+  run(c, 0.2, { moveZ: -1 });
+  ok('pulling away lets go', c.state !== 'hang', `state=${c.state}`);
+  run(c, 2.0, {});
+  ok('and he falls to the floor', Math.abs(c.position.y) < 1e-6,
+    `y=${c.position.y.toFixed(3)}`);
+}
+{
+  // A ledge with no room above must NOT be grabbable — pulling up into a
+  // ceiling is worse than not grabbing at all.
+  // The blocker has to be TALL, not a thin slab: a thin one has a grabbable
+  // top of its own just above, and he simply catches that instead — which is
+  // correct behaviour and makes the test pass for the wrong reason.
+  const col = new Collider()
+    .addBox(0, 2.5, 3, 6, 5, 4)          // the wall, top at 5
+    .addBox(0, 8.65, 3, 6, 6.7, 4);      // spans 5.3 to 12, top far out of reach
+  const c = makeChar(col);
+  c.position.set(0, 0, -0.6); c.facing = 0;
+  ok('a ledge with no headroom is not grabbed', !jumpAt(c), `state=${c.state}`);
+}
+
+console.log('\ncover');
+{
+  // Walking into a tall wall and pressing puts him flat against it.
+  const col = new Collider().addBox(0, 1.5, 3, 6, 3, 0.6);   // face at z=2.7
+  const c = makeChar(col);
+  c.position.set(0, 0, 0);
+  c.facing = 0;
+  run(c, 1.2, { moveZ: 1 });
+  ok('he reaches the wall', c.position.z > 2, `z=${c.position.z.toFixed(2)}`);
+  const w = col.findWall(c.position.x, c.position.z, c.position.y, 0, 1,
+    TUNING.radius, { reach: TUNING.coverReach, minHeight: TUNING.coverMinHeight });
+  ok('a wall in front is detected', w !== null);
+  c._tryCover();
+  ok('pressing enters cover', c.state === 'cover', `state=${c.state}`);
+  const z0 = c.position.z;
+  run(c, 0.5, { moveX: 1 });
+  ok('in cover he slides ALONG the wall', c.position.x > 0.2,
+    `x=${c.position.x.toFixed(2)}`);
+  ok('and never off it', Math.abs(c.position.z - z0) < 1e-6,
+    `z drifted ${(c.position.z - z0).toFixed(4)}`);
+  run(c, 0.4, { moveZ: -1 });
+  ok('pulling away leaves cover', c.state !== 'cover', `state=${c.state}`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

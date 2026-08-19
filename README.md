@@ -46,7 +46,7 @@ src/
   world/Collider.js AABB collision: walls, platforms, step-up, ceilings
 tests/
   locomotion.mjs    51 deterministic controller checks (no browser)
-  collision.mjs     16 collision checks (no browser)
+  collision.mjs     38 collision, ledge and cover checks (no browser)
   gestures.mjs      real touch events against the sticks
   smoke.mjs         boots the real thing in Chromium
 ```

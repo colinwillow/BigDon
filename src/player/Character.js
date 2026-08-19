@@ -20,7 +20,7 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { AnimationController } from './AnimationController.js';
 import { CLIPS, MELEE_COMBO, TUNING } from './clips.js';
-import { clamp, clamp01, damp, wrapAngle, angleDelta, moveTowardAngle } from '../core/math.js';
+import { clamp, clamp01, damp, smoothstep, wrapAngle, angleDelta, moveTowardAngle } from '../core/math.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -63,6 +63,14 @@ export class Character {
     this._comboT = 0;
     /** Which hand/foot the NEXT strike uses. Alternates down the chain. */
     this._meleeSide = Math.random() < 0.5 ? 'left' : 'right';
+
+    /** Ledge currently held, or null. Shape comes from Collider.findLedge. */
+    this.ledge = null;
+    this._hangT = 0;              // position along the edge
+    this._noGrabUntil = 0;
+    this._climbT = 0;
+    /** Wall currently pressed against, or null. */
+    this.cover = null;
 
     /**
      * Corrects a model whose bind pose does not face +Z. Measured once at load
@@ -126,6 +134,14 @@ export class Character {
       // A fresh chain opens on a random side, so the same combo does not always
       // start with the same hand.
       this._meleeSide = Math.random() < 0.5 ? 'left' : 'right';
+
+    /** Ledge currently held, or null. Shape comes from Collider.findLedge. */
+    this.ledge = null;
+    this._hangT = 0;              // position along the edge
+    this._noGrabUntil = 0;
+    this._climbT = 0;
+    /** Wall currently pressed against, or null. */
+    this.cover = null;
     } else {
       this._comboIndex = (this._comboIndex + 1) % MELEE_COMBO.length;
       // ALTERNATE, do not re-roll. Random sides throw the same hand twice in a
@@ -148,6 +164,118 @@ export class Character {
     return MELEE_COMBO[this._comboIndex] + '_' + this._meleeSide;
   }
 
+  /**
+   * Try to catch a ledge in front of him. Called every airborne frame; cheap
+   * enough to poll and much more forgiving than requiring a button.
+   */
+  _tryGrabLedge(now) {
+    if (!this.collider || now < this._noGrabUntil) return false;
+    if (this.velocity.y > 1.0) return false;   // only on the way up's tail or falling
+    const l = this.collider.findLedge(
+      this.position.x, this.position.z, this.position.y,
+      Math.sin(this.facing), Math.cos(this.facing), this.T.radius,
+      {
+        reach: this.T.hangReach,
+        bandLow: this.T.hangBandLow,
+        bandHigh: this.T.hangBandHigh,
+        headroom: this.T.hangHeadroom,
+      }
+    );
+    if (!l) return false;
+    this.ledge = l;
+    // Face INTO the wall: the outward normal points at him, so his facing is
+    // its negation.
+    this.facing = Math.atan2(-l.nx, -l.nz);
+    // The edge runs along whichever axis the wall does not face.
+    this._hangT = l.nz !== 0 ? this.position.x : this.position.z;
+    this._snapToLedge();
+    this.velocity.set(0, 0, 0);
+    this.grounded = false;
+    this.anim.endOneShot();
+    this._enter('hang');
+    return true;
+  }
+
+  /** Put him at the hang position for the current edge offset. */
+  _snapToLedge() {
+    const l = this.ledge;
+    // Leave a body's width at each end so he cannot hang off thin air past the
+    // corner of the box.
+    const pad = this.T.radius;
+    this._hangT = clamp(this._hangT, l.minT + pad, l.maxT - pad);
+    if (l.nz !== 0) { this.position.x = this._hangT; this.position.z = l.z; }
+    else { this.position.x = l.x; this.position.z = this._hangT; }
+    this.position.y = l.top - this.T.hangDrop;
+  }
+
+  /** Let go and fall. */
+  releaseLedge() {
+    if (!this.ledge) return;
+    this.ledge = null;
+    this._noGrabUntil = this._now + this.T.hangGrace;
+    this.anim.endOneShot();
+    this.anim.enterAir();
+    this._enter('air');
+  }
+
+  /** Pull up onto the ledge he is holding. */
+  climbLedge() {
+    if (!this.ledge || this.state === 'climb') return false;
+    this._enter('climb');
+    this._climbT = 0;
+    this._oneShotEnds = this.anim.play(CLIPS.hangClimbUp);
+    return true;
+  }
+
+  /** Press against a wall in front of him. */
+  _tryCover() {
+    if (!this.collider || !this.grounded) return false;
+    const w = this.collider.findWall(
+      this.position.x, this.position.z, this.position.y,
+      Math.sin(this.facing), Math.cos(this.facing), this.T.radius,
+      { reach: this.T.coverReach, minHeight: this.T.coverMinHeight }
+    );
+    if (!w) return false;
+    this.cover = w;
+    this.facing = Math.atan2(-w.nx, -w.nz);
+    this._hangT = w.nz !== 0 ? this.position.x : this.position.z;
+    this._enter('cover');
+    this._oneShotEnds = this.anim.play(
+      (this._coverSideHeld = 'right') === 'left' ? CLIPS.coverInL : CLIPS.coverInR
+    );
+    return true;
+  }
+
+  /**
+   * Resolve stick input into movement ALONG a surface.
+   *
+   * The tangent is simply the axis the surface does NOT face, and the input is
+   * its plain component — no multiplying by the normal's sign. Doing that (the
+   * first version of this) inverts movement on walls facing one way, so
+   * shimmying and cover-sneaking went the opposite direction depending on which
+   * face of a block you were on.
+   *
+   * The sided CLIP is a separate question, answered by which of his own
+   * shoulders he is travelling toward, so it stays correct on every face.
+   */
+  _alongSurface(n) {
+    const tx = n.nz !== 0 ? 1 : 0;
+    const tz = n.nz !== 0 ? 0 : 1;
+    const input = this._moveWorld.x * tx + this._moveWorld.z * tz;
+    // His right, given forward = (sin f, cos f), is (-cos f, sin f).
+    const rx = -Math.cos(this.facing);
+    const rz = Math.sin(this.facing);
+    const side = (tx * rx + tz * rz) * input >= 0 ? 'right' : 'left';
+    return { tx, tz, input, side };
+  }
+
+  leaveCover() {
+    if (!this.cover) return;
+    this.cover = null;
+    this.anim.endOneShot();
+    this._enter('ground');
+  }
+
   _enter(state) {
     this.state = state;
     this._stateT = 0;
@@ -161,6 +289,7 @@ export class Character {
    *          aiming:boolean, aimYaw:number}} input  already in WORLD space
    */
   update(dt, input) {
+    this._now = (this._now || 0) + dt;
     this._stateT += dt;
     this._slideCooldown = Math.max(0, this._slideCooldown - dt);
     this._comboT = Math.max(0, this._comboT - dt);
@@ -230,8 +359,71 @@ export class Character {
         }
         break;
       }
+      case 'hang': {
+        // Suspended: no gravity, no ground, position owned by the edge.
+        this.velocity.set(0, 0, 0);
+        const l = this.ledge;
+        const a = this._alongSurface(l);
+        if (Math.abs(a.input) > 0.15) {
+          this._hangT += a.input * this.T.shimmySpeed * dt;
+        }
+        this._snapToLedge();
+        // Pushing INTO the wall climbs; pulling away drops. The wall's outward
+        // normal points at him, so pushing in is movement against it.
+        const into = -(this._moveWorld.x * l.nx + this._moveWorld.z * l.nz);
+        if (into > 0.55) this.climbLedge();
+        else if (into < -0.55) this.releaseLedge();
+        break;
+      }
+      case 'climb': {
+        // Carry him from the hang position up onto the top over the clip, then
+        // hand him back to the ground state standing on it. Driving this
+        // procedurally rather than trusting the clip is deliberate: the clip is
+        // in-place, so on its own he would pull up and stay exactly where he was.
+        const l = this.ledge;
+        this._climbT = clamp01(this._climbT + dt / this.T.climbUpTime);
+        const e = smoothstep(this._climbT);
+        this.velocity.set(0, 0, 0);
+        const startY = l.top - this.T.hangDrop;
+        this.position.y = startY + (l.top - startY) * e;
+        // ...and inward across the second half, so he ends standing ON the top
+        // rather than balanced on its lip.
+        const inward = Math.max(0, e - 0.5) * 2;
+        const dist = this.T.radius * 1.9 * inward;
+        if (l.nx) { this.position.x = l.x - l.nx * dist; }
+        else { this.position.z = l.z - l.nz * dist; }
+        if (this._climbT >= 1) {
+          this.ledge = null;
+          this.position.y = l.top;
+          this.grounded = true;
+          this.anim.endOneShot();
+          this._enter('ground');
+        }
+        break;
+      }
+      case 'cover': {
+        // Flattened against the wall: he moves only along it.
+        const w = this.cover;
+        const a = this._alongSurface(w);
+        const pad = this.T.radius;
+        if (Math.abs(a.input) > 0.15) {
+          this._hangT = clamp(
+            this._hangT + a.input * this.T.coverSneakSpeed * dt,
+            w.minT + pad, w.maxT - pad
+          );
+        }
+        if (w.nx) { this.position.x = w.x; this.position.z = this._hangT; }
+        else { this.position.x = this._hangT; this.position.z = w.z; }
+        this.velocity.set(0, 0, 0);
+        const out = this._moveWorld.x * w.nx + this._moveWorld.z * w.nz;
+        if (out > 0.55) this.leaveCover();
+        break;
+      }
       case 'air':
         this._accelerate(dt, this._moveWorld, wantSpeed, this.T.airControl);
+        // Catching a ledge is polled, not asked for: requiring a button here
+        // means missing the grab is the player's fault rather than the level's.
+        this._tryGrabLedge(this._now);
         break;
       default:
         this._accelerate(dt, this._moveWorld, wantSpeed, 1);
@@ -240,7 +432,8 @@ export class Character {
 
     // ── jump ─────────────────────────────────────────────────────────────
     const canJump = (this.grounded || this._coyote > 0)
-      && this.state !== 'slide' && this.state !== 'melee';
+      && this.state !== 'slide' && this.state !== 'melee'
+      && this.state !== 'hang' && this.state !== 'climb' && this.state !== 'cover';
     if (this._jumpBuffered >= 0 && canJump) {
       this.velocity.y = this.T.jumpSpeed;
       this.grounded = false;
@@ -249,6 +442,20 @@ export class Character {
       this.anim.endOneShot();
       this.anim.enterAir();
       this._enter('air');
+    }
+
+    // ── suspended states own their own position entirely ─────────────────
+    // Gravity, the world sweep and the ground query all skip these; a hang that
+    // is still subject to gravity slides down the wall a few centimetres a
+    // frame, which reads as the grab not holding.
+    const suspended = this.state === 'hang' || this.state === 'climb' || this.state === 'cover';
+    if (suspended) {
+      this.speed = 0;
+      this._updateFacing(dt, 0);
+      this._drive(dt);
+      this.model.position.copy(this.position);
+      this.model.rotation.y = this.facing + this.modelYawOffset;
+      return;
     }
 
     // ── gravity + ground ─────────────────────────────────────────────────
@@ -346,6 +553,8 @@ export class Character {
 
   _updateFacing(dt, intent) {
     if (this.state === 'slide') return;    // the slide owns its facing
+    // Hanging, climbing and cover all face the surface; nothing else may turn him.
+    if (this.state === 'hang' || this.state === 'climb' || this.state === 'cover') return;
 
     let want = this.facing;
     let rate = this.T.turnRate;
@@ -365,6 +574,18 @@ export class Character {
 
   _drive(dt) {
     const a = this.anim;
+    if (this.state === 'hang') {
+      const t = this._alongSurface(this.ledge);
+      const moving = Math.abs(t.input) > 0.15;
+      a.hang(moving ? (t.side === 'right' ? 1 : -1) : 0);
+      return;
+    }
+    if (this.state === 'cover') {
+      const t = this._alongSurface(this.cover);
+      const moving = Math.abs(t.input) > 0.15;
+      a.cover(moving ? (t.side === 'right' ? 1 : -1) : 0, this._coverSideHeld || 'right');
+      return;
+    }
     if (a.busy) {
       // An overlay is playing; the tree still gets asked for a pose so the
       // blend underneath is the right one when the overlay fades out.

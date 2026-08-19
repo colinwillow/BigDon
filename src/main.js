@@ -121,6 +121,12 @@ function frame(now) {
 
   input.sample();
 
+  // Pressing into a wall on the ground slips him into cover. Polled rather than
+  // bound to a button — every verb on this pad is already spoken for.
+  if (character.state === 'ground' && input.moveMag > 0.65 && character.speed < 2.5) {
+    character._tryCover();
+  }
+
   character.update(dt, {
     moveX: input.move.x * input.moveMag,
     moveZ: input.move.z * input.moveMag,

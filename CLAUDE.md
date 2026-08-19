@@ -199,6 +199,35 @@ so the visual and collision worlds cannot drift apart. `Character` takes the
 collider as an optional third argument — without one the world is a flat plane
 at y=0, which is what the headless controller tests run against.
 
+## Ledges and cover
+
+Both are *suspended* states: `hang`, `climb` and `cover` own their own position
+outright and skip gravity, the world sweep and the ground query entirely. A hang
+that is still subject to gravity slides a few centimetres a frame, which reads
+as the grab not holding.
+
+`Collider.findLedge` and `findWall` probe forward from the character and return
+the face position, its outward normal, and how far the edge runs — which is what
+lets shimmying and cover-sneaking clamp to the actual extent of the box.
+
+**Movement along a surface is the plain tangent component, never multiplied by
+the normal's sign.** Doing that inverts it on walls facing the other way, so
+shimmying went the wrong direction depending on which face of a block you were
+on. The sided CLIP is a separate question, answered by which of his own
+shoulders he is moving toward, so it stays right on every face. See
+`_alongSurface`.
+
+The grab is POLLED every airborne frame rather than bound to a button — missing
+a ledge should be the level's fault, not the player's.
+
+### Hanging only matters above the jump
+
+The apex is 4.0m, so anything shorter is a hurdle and he sails clean over it.
+The test world's 5m wall exists for this. Two collision tests originally failed
+for exactly this reason and the code was fine both times: one jumped a 2.4m
+block, and one "no headroom" case put a thin slab above the ledge whose own top
+he then caught instead — correct behaviour, passing for the wrong reason.
+
 ## Input is ported, not invented
 
 `src/input/Joystick.js` came from Peggy, which got it from Robits, and it is the

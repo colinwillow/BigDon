@@ -180,6 +180,23 @@ export const TUNING = {
   meleeRecover: 0.34,   // control back well before the clip's recovery tail
   comboWindow: 0.65,
 
+  // ── ledge hang ───────────────────────────────────────────────────────────
+  // The grab band is measured from the FEET, so it is directly comparable with
+  // stepHeight and the jump apex — the numbers you actually tune against.
+  hangReach: 0.42,        // how far in front of his own radius he can catch
+  hangBandLow: 1.25,      // a ledge below this is a step-up or a vault, not a hang
+  hangBandHigh: 2.55,     // above this his hands cannot reach it
+  hangDrop: 1.86,         // feet sit this far under the ledge while hanging
+  hangHeadroom: 1.6,      // space that must exist above a ledge to climb into
+  shimmySpeed: 1.5,       // metres/sec sideways along the edge
+  climbUpTime: 0.62,      // how long the pull-up takes before he stands on top
+  hangGrace: 0.18,        // no re-grab for this long after dropping off
+
+  // ── cover / wall press ───────────────────────────────────────────────────
+  coverReach: 0.30,
+  coverMinHeight: 1.1,    // a wall shorter than this is cover for nobody
+  coverSneakSpeed: 1.9,
+
   // ── slide tackle (left-stick flick) ──────────────────────────────────────
   slideSpeed: 17.0,
   slideDuration: 0.55,

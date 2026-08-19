@@ -81,6 +81,20 @@ export function buildWorld(scene) {
     collider.addBox(x, y, z, w, h, d);
   }
 
+  // ── a wall too tall to jump ─────────────────────────────────────────────
+  // 5m, against a 4m jump apex. Anything he can clear is a hurdle, not a ledge,
+  // so hanging only has anything to do until you build something taller than
+  // the jump. This is also the cover wall.
+  {
+    const w = 9, h = 5, d = 1.2, x = 9.5, z = -6;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), blockMat);
+    m.position.set(x, h / 2, z);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    group.add(m);
+    collider.addBox(x, h / 2, z, w, h, d);
+  }
+
   // ── a staircase ─────────────────────────────────────────────────────────
   // Four 0.3m risers. Below the controller's stepHeight, so he should walk
   // straight up without jumping and without catching on any edge — the single
