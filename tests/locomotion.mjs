@@ -10,7 +10,7 @@
 import * as THREE from '../vendor/three/three.module.js';
 import { Character } from '../src/player/Character.js';
 import { measureYawOffset } from '../src/player/rig.js';
-import { TUNING, CLIPS } from '../src/player/clips.js';
+import { TUNING, CLIPS, MELEE_COMBO } from '../src/player/clips.js';
 import { wrapAngle } from '../src/core/math.js';
 
 let pass = 0, fail = 0;
@@ -155,31 +155,31 @@ console.log('\njump');
   ok('coyote time allows a late jump', c.velocity.y > 0, `vy=${c.velocity.y.toFixed(2)}`);
 }
 
-console.log('\ndash');
+console.log('\nslide');
 {
   const c = makeChar();
-  const fired = c.requestDash(0);          // 0 => forward is +Z
-  ok('dash fires when off cooldown', fired === true);
-  ok('dash enters dash state', c.state === 'dash', `state=${c.state}`);
+  const fired = c.requestSlide(0);          // 0 => forward is +Z
+  ok('slide fires when off cooldown', fired === true);
+  ok('slide enters slide state', c.state === 'slide', `state=${c.state}`);
   run(c, 0.1, {});
-  ok('dash travels +Z for angle 0', c.position.z > 0.2, `z=${c.position.z.toFixed(2)}`);
-  ok('dash ignores the stick', near(c.position.x, 0, 1e-6), `x=${c.position.x}`);
+  ok('slide travels +Z for angle 0', c.position.z > 0.2, `z=${c.position.z.toFixed(2)}`);
+  ok('slide ignores the stick', near(c.position.x, 0, 1e-6), `x=${c.position.x}`);
   run(c, 1.0, {});
-  ok('dash ends and returns to ground', c.state === 'ground', `state=${c.state}`);
+  ok('slide ends and returns to ground', c.state === 'ground', `state=${c.state}`);
 }
 {
   const c = makeChar();
-  c.requestDash(0);
-  const again = c.requestDash(0);
-  ok('dash respects its cooldown', again === false);
+  c.requestSlide(0);
+  const again = c.requestSlide(0);
+  ok('slide respects its cooldown', again === false);
 }
 {
-  // Direction check for the dash, separate from distance.
+  // Direction check for the slide, separate from distance.
   const c = makeChar();
-  c.requestDash(Math.PI / 2);              // PI/2 => +X
+  c.requestSlide(Math.PI / 2);              // PI/2 => +X
   run(c, 0.12, {});
-  ok('dash at PI/2 travels +X', c.position.x > 0.2, `x=${c.position.x.toFixed(2)}`);
-  ok('dash at PI/2 does not travel Z', Math.abs(c.position.z) < 1e-6);
+  ok('slide at PI/2 travels +X', c.position.x > 0.2, `x=${c.position.x.toFixed(2)}`);
+  ok('slide at PI/2 does not travel Z', Math.abs(c.position.z) < 1e-6);
 }
 
 console.log('\nblend tree');
@@ -192,7 +192,7 @@ console.log('\nblend tree');
   // read it before update() runs.
   c.update(1 / 60, { moveX: 0, moveZ: -1, aiming: false, aimYaw: 0 });
   ok('running forward asks for the forward run clip',
-    (c.anim.target.get('running') || 0) > 0.5,
+    (c.anim.target.get(CLIPS.runF) || 0) > 0.5,
     `weights=${[...c.anim.target].map(([k, v]) => k + ':' + v.toFixed(2)).join(' ')}`);
   void t;
 }
@@ -209,26 +209,26 @@ console.log('\nblend tree');
 
   const toHisLeft = strafe(Math.PI / 2, -1);   // faces +X, travels -Z
   ok('travelling to his left plays the LEFT strafe',
-    (toHisLeft.get('left_strafe') || 0) > 0.5,
+    (toHisLeft.get(CLIPS.runL) || 0) > 0.5,
     `weights=${[...toHisLeft].map(([k, v]) => k + ':' + v.toFixed(2)).join(' ')}`);
   ok('travelling to his left does not touch the right strafe',
-    (toHisLeft.get('right_strafe') || 0) < 0.01);
+    (toHisLeft.get(CLIPS.runR) || 0) < 0.01);
 
   const toHisRight = strafe(Math.PI / 2, 1);   // faces +X, travels +Z
   ok('travelling to his right plays the RIGHT strafe',
-    (toHisRight.get('right_strafe') || 0) > 0.5,
+    (toHisRight.get(CLIPS.runR) || 0) > 0.5,
     `weights=${[...toHisRight].map(([k, v]) => k + ':' + v.toFixed(2)).join(' ')}`);
   ok('travelling to his right does not touch the left strafe',
-    (toHisRight.get('left_strafe') || 0) < 0.01);
+    (toHisRight.get(CLIPS.runL) || 0) < 0.01);
 
   // And backwards, so the F/B pair is pinned too.
   const backing = strafe(0, 1);                // faces +Z, travels +Z... forward
   ok('travelling along his facing plays the forward run',
-    (backing.get('running') || 0) > 0.5,
+    (backing.get(CLIPS.runF) || 0) > 0.5,
     `weights=${[...backing].map(([k, v]) => k + ':' + v.toFixed(2)).join(' ')}`);
   const reversing = strafe(0, -1);             // faces +Z, travels -Z
   ok('travelling against his facing plays the BACK run',
-    (reversing.get('standing_run_back') || 0) > 0.5,
+    (reversing.get(CLIPS.runB) || 0) > 0.5,
     `weights=${[...reversing].map(([k, v]) => k + ':' + v.toFixed(2)).join(' ')}`);
 }
 {
@@ -290,13 +290,19 @@ console.log('\nmelee');
   const seen = [];
   for (let i = 0; i < 3; i++) {
     c.requestMelee(0);
-    seen.push(CLIPS.meleeCombo[c._comboIndex]);
+    seen.push(c.currentMeleeClip);
     run(c, 0.12, {});                       // well inside comboWindow
   }
   ok('three chained flicks play three different swings',
     new Set(seen).size === 3, seen.join(' -> '));
   ok('the chain follows the authored combo order',
-    seen.join('|') === CLIPS.meleeCombo.join('|'), seen.join(' -> '));
+    seen.map((n) => n.replace(/_(left|right)$/, '')).join('|')
+      === MELEE_COMBO.slice(0, 3).join('|'), seen.join(' -> '));
+  // Sides must ALTERNATE. Re-rolling at random throws the same hand twice
+  // often enough to read as a hitch.
+  const sides = seen.map((n) => n.endsWith('_left') ? 'L' : 'R');
+  ok('the chain alternates sides', sides[0] !== sides[1] && sides[1] !== sides[2],
+    sides.join(''));
 }
 {
   // ...and letting the window lapse resets to the opener.
@@ -304,12 +310,12 @@ console.log('\nmelee');
   c.requestMelee(0);
   run(c, 0.12, {});
   c.requestMelee(0);
-  const second = CLIPS.meleeCombo[c._comboIndex];
+  const second = c.currentMeleeClip;
   run(c, TUNING.comboWindow + 0.1, {});     // let it lapse
   c.requestMelee(0);
-  const afterLapse = CLIPS.meleeCombo[c._comboIndex];
+  const afterLapse = c.currentMeleeClip;
   ok('a lapsed combo restarts from the opener',
-    afterLapse === CLIPS.meleeCombo[0] && second !== CLIPS.meleeCombo[0],
+    afterLapse.startsWith(MELEE_COMBO[0]) && !second.startsWith(MELEE_COMBO[0]),
     `second=${second} afterLapse=${afterLapse}`);
 }
 

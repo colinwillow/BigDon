@@ -19,7 +19,7 @@
 
 import * as THREE from '../../vendor/three/three.module.js';
 import { AnimationController } from './AnimationController.js';
-import { CLIPS, TUNING } from './clips.js';
+import { CLIPS, MELEE_COMBO, TUNING } from './clips.js';
 import { clamp, clamp01, damp, wrapAngle, angleDelta, moveTowardAngle } from '../core/math.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -50,17 +50,19 @@ export class Character {
     this.aiming = false;
 
     this.grounded = true;
-    this.state = 'ground';       // ground | air | dash | melee | land
+    this.state = 'ground';       // ground | air | slide | melee | land
     this._stateT = 0;
     this._oneShotEnds = 0;
 
     this._coyote = 0;
     this._jumpBuffered = -1;
-    this._dashCooldown = 0;
-    this._dashDir = new THREE.Vector3();
+    this._slideCooldown = 0;
+    this._slideDir = new THREE.Vector3();
     this._meleeDir = new THREE.Vector3();
     this._comboIndex = 0;
     this._comboT = 0;
+    /** Which hand/foot the NEXT strike uses. Alternates down the chain. */
+    this._meleeSide = Math.random() < 0.5 ? 'left' : 'right';
 
     /**
      * Corrects a model whose bind pose does not face +Z. Measured once at load
@@ -92,17 +94,17 @@ export class Character {
     this._jumpBuffered = this.T.jumpBuffer;
   }
 
-  /** Left-stick flick: a dodge roll in the flicked direction. */
-  requestDash(worldAngle) {
-    if (this._dashCooldown > 0) return false;
-    if (this.state === 'dash') return false;
-    this._dashCooldown = this.T.dashCooldown + this.T.dashDuration;
-    this._dashDir.set(Math.sin(worldAngle), 0, Math.cos(worldAngle));
-    // A roll commits its facing to the roll direction — rolling sideways while
-    // facing forward would need a clip set this model does not have.
+  /** Left-stick flick: the slide tackle, in the flicked direction. */
+  requestSlide(worldAngle) {
+    if (this._slideCooldown > 0) return false;
+    if (this.state === 'slide') return false;
+    this._slideCooldown = this.T.slideCooldown + this.T.slideDuration;
+    this._slideDir.set(Math.sin(worldAngle), 0, Math.cos(worldAngle));
+    // The slide commits its facing to the slide direction — there is one take,
+    // and it slides straight ahead.
     this.facing = worldAngle;
-    this._enter('dash');
-    this._oneShotEnds = this.anim.play(CLIPS.dash);
+    this._enter('slide');
+    this._oneShotEnds = this.anim.play(CLIPS.slide);
     return true;
   }
 
@@ -115,21 +117,35 @@ export class Character {
    * opener.
    */
   requestMelee(worldAngle) {
-    if (this.state === 'dash') return false;
-    const combo = CLIPS.meleeCombo;
+    if (this.state === 'slide') return false;
     // The window is checked against the combo timer, not against being mid-
     // swing: a chain has to survive the swing ending, or the second hit only
     // lands if you flick during the first one's animation.
-    if (this._comboT <= 0) this._comboIndex = 0;
-    else this._comboIndex = (this._comboIndex + 1) % combo.length;
+    if (this._comboT <= 0) {
+      this._comboIndex = 0;
+      // A fresh chain opens on a random side, so the same combo does not always
+      // start with the same hand.
+      this._meleeSide = Math.random() < 0.5 ? 'left' : 'right';
+    } else {
+      this._comboIndex = (this._comboIndex + 1) % MELEE_COMBO.length;
+      // ALTERNATE, do not re-roll. Random sides throw the same hand twice in a
+      // row often enough to read as a hitch; alternating is what a real
+      // combination looks like.
+      this._meleeSide = this._meleeSide === 'left' ? 'right' : 'left';
+    }
     this._comboT = this.T.comboWindow;
     if (worldAngle != null) this.facing = worldAngle;
     // Lunge along the FACING, which the line above has just set to the flick
     // direction — so he steps into wherever you swung.
     this._meleeDir.set(Math.sin(this.facing), 0, Math.cos(this.facing));
     this._enter('melee');
-    this._oneShotEnds = this.anim.play(combo[this._comboIndex]);
+    this._oneShotEnds = this.anim.play(this.currentMeleeClip);
     return true;
+  }
+
+  /** The sided clip name the current combo step resolves to. */
+  get currentMeleeClip() {
+    return MELEE_COMBO[this._comboIndex] + '_' + this._meleeSide;
   }
 
   _enter(state) {
@@ -146,7 +162,7 @@ export class Character {
    */
   update(dt, input) {
     this._stateT += dt;
-    this._dashCooldown = Math.max(0, this._dashCooldown - dt);
+    this._slideCooldown = Math.max(0, this._slideCooldown - dt);
     this._comboT = Math.max(0, this._comboT - dt);
     if (this._jumpBuffered >= 0) this._jumpBuffered -= dt;
 
@@ -173,14 +189,14 @@ export class Character {
 
     // ── state machine ────────────────────────────────────────────────────
     switch (this.state) {
-      case 'dash': {
-        // A roll owns the velocity outright — stick input during it is ignored,
-        // which is what makes it read as a committed move rather than a nudge.
-        const t = clamp01(this._stateT / this.T.dashDuration);
+      case 'slide': {
+        // The slide owns the velocity outright — stick input during it is
+        // ignored, which is what makes it read as a committed move.
+        const t = clamp01(this._stateT / this.T.slideDuration);
         const curve = 1 - t * t;            // fast out, easing to nothing
-        this.velocity.x = this._dashDir.x * this.T.dashSpeed * curve;
-        this.velocity.z = this._dashDir.z * this.T.dashSpeed * curve;
-        if (this._stateT >= Math.min(this.T.dashDuration, this._oneShotEnds)) {
+        this.velocity.x = this._slideDir.x * this.T.slideSpeed * curve;
+        this.velocity.z = this._slideDir.z * this.T.slideSpeed * curve;
+        if (this._stateT >= Math.min(this.T.slideDuration, this._oneShotEnds)) {
           this.anim.endOneShot();
           this._enter(this.grounded ? 'ground' : 'air');
         }
@@ -224,7 +240,7 @@ export class Character {
 
     // ── jump ─────────────────────────────────────────────────────────────
     const canJump = (this.grounded || this._coyote > 0)
-      && this.state !== 'dash' && this.state !== 'melee';
+      && this.state !== 'slide' && this.state !== 'melee';
     if (this._jumpBuffered >= 0 && canJump) {
       this.velocity.y = this.T.jumpSpeed;
       this.grounded = false;
@@ -282,7 +298,7 @@ export class Character {
         // Landed. A hard landing gets the plant; a small hop just carries on,
         // because interrupting a run with a landing animation every time he
         // clears a kerb is worse than no landing animation at all.
-        if (this.velocity.y < -7 && this.state !== 'dash') {
+        if (this.velocity.y < -7 && this.state !== 'slide') {
           this._enter('land');
           this._oneShotEnds = this.anim.play(CLIPS.land);
         } else if (this.state === 'air') {
@@ -329,7 +345,7 @@ export class Character {
   }
 
   _updateFacing(dt, intent) {
-    if (this.state === 'dash') return;      // the roll owns its facing
+    if (this.state === 'slide') return;    // the slide owns its facing
 
     let want = this.facing;
     let rate = this.T.turnRate;

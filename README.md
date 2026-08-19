@@ -13,13 +13,13 @@ npm test
 |            | left stick            | right stick                    |
 | ---------- | --------------------- | ------------------------------ |
 | **push**   | walk / run            | aim — he turns, camera follows  |
-| **flick**  | dodge roll            | melee (chains into a combo)     |
+| **flick**  | slide tackle          | melee (alternating-side combo)  |
 | **tap**    | recentre the camera   | jump                            |
 
 Push the right stick past the trigger zone and he shoots in that direction.
 Ease the left stick out for a walk; push past ~72% for a run.
 
-On a laptop: `WASD` move, `SPACE` jump, `SHIFT` roll, `V` melee, drag to look,
+On a laptop: `WASD` move, `SPACE` jump, `SHIFT` slide, `V` melee, drag to look,
 `Q`/`E` turn, `R` recentre.
 
 ## Layout
@@ -28,7 +28,7 @@ On a laptop: `WASD` move, `SPACE` jump, `SHIFT` roll, `V` melee, drag to look,
 index.html          importmap + the touch-control DOM
 styles.css
 vendor/three/       three r160, vendored — do not replace with a bundler
-models/             donny_game.glb — 72 in-place animation tracks
+models/             handyman_game.glb — 54 in-place tracks (the playable one)
 src/
   core/math.js      dt-correct damping, angle helpers
   input/

@@ -8,6 +8,9 @@ import { Character } from './player/Character.js';
 import { FollowCamera } from './camera/FollowCamera.js';
 import { Input } from './input/Input.js';
 import { TUNING } from './player/clips.js';
+
+/** The playable character. */
+const MODEL = 'models/handyman_game.glb';
 import { clamp } from './core/math.js';
 
 const canvas = document.getElementById('game');
@@ -59,7 +62,7 @@ window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 120));
 
 async function boot() {
-  const loaded = await loadCharacter('models/donny_game.glb');
+  const loaded = await loadCharacter(MODEL);
   scene.add(loaded.root);
 
   character = new Character(loaded.root, loaded.clips, collider);
@@ -91,7 +94,7 @@ async function boot() {
 
   input.onJump = () => character.requestJump();
   input.onMelee = (a) => character.requestMelee(a ?? character.facing);
-  input.onDash = (a) => character.requestDash(a);
+  input.onSlide = (a) => character.requestSlide(a);
   input.onRecentre = () => follow.recentre(character);
 
   window.__input = input;         // gesture tests drive the sticks through this

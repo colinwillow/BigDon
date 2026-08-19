@@ -60,6 +60,17 @@ console.log('strafing:', JSON.stringify(await page.evaluate(() => ({
   clips: character.anim.activeList(),
 }))));
 
+// backpedal: face +Z, travel -Z (there is no back clip in the pack, so this is
+// the derived reversed forward run)
+await page.evaluate(() => {
+  window.__drive = { x: 0, z: -1, mag: 1, aiming: true, aimYaw: 0 };
+});
+await page.waitForTimeout(900);
+await page.screenshot({ path: 'scratch/06-backpedal.png' });
+console.log('backpedal:', JSON.stringify(await page.evaluate(() => ({
+  speed: +character.speed.toFixed(2), facing: +character.facing.toFixed(2),
+  clips: character.anim.activeList() }))));
+
 // jump
 await page.evaluate(() => { window.__drive.aiming = false; character.requestJump(); });
 await page.waitForTimeout(260);

@@ -32,12 +32,12 @@ export class Input {
     /** Set by the consumer — see the verb map above. */
     this.onJump = null;
     this.onMelee = null;      // (worldAngle)
-    this.onDash = null;       // (worldAngle)
+    this.onSlide = null;      // (worldAngle)
     this.onRecentre = null;
 
     this.left.onTap = () => this.onRecentre && this.onRecentre();
     this.left.onFlick = (screenAngle) => {
-      if (this.onDash) this.onDash(this.screenToWorldAngle(screenAngle));
+      if (this.onSlide) this.onSlide(this.screenToWorldAngle(screenAngle));
     };
     this.right.onTap = () => this.onJump && this.onJump();
     this.right.onFlick = (screenAngle) => {
@@ -67,9 +67,9 @@ export class Input {
       if (e.code === 'Space' && this.onJump) this.onJump();
       if (e.code === 'KeyV' && this.onMelee) this.onMelee(null);
       if (e.code === 'KeyR' && this.onRecentre) this.onRecentre();
-      if (e.code === 'ShiftLeft' && this.onDash) {
+      if (e.code === 'ShiftLeft' && this.onSlide) {
         const a = this._keyMoveAngle();
-        if (a !== null) this.onDash(a);
+        if (a !== null) this.onSlide(a);
       }
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));

@@ -26,6 +26,13 @@ export async function loadCharacter(url, opts = {}) {
   const gltf = await loader.loadAsync(url);
   const scene = gltf.scene;
 
+  // The exporter writes every track as `Armature|<name>|Layer0`. Strip it here,
+  // once, so clips.js can name clips the way they read in Blender and nothing
+  // downstream has to know about the export convention.
+  for (const clip of gltf.animations) {
+    clip.name = clip.name.replace(/^Armature\|/, '').replace(/\|Layer0$/, '');
+  }
+
   // NOTE: the character is NOT scaled here — see normaliseHeight() below, which
   // has to run after the animation system is live to get a truthful measurement.
 

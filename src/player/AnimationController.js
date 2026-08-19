@@ -24,7 +24,7 @@
 //    the time the swing finishes.
 
 import * as THREE from '../../vendor/three/three.module.js';
-import { CLIPS, CLIP_TUNING, TUNING } from './clips.js';
+import { CLIPS, CLIP_TUNING, DERIVED, MELEE_COMBO, MELEE_EXTRA, TUNING } from './clips.js';
 import { clamp, clamp01, damp } from '../core/math.js';
 
 /** The four cardinals of the blend tree, in screen-ish order. */
@@ -53,6 +53,10 @@ export class AnimationController {
     this.clips = new Map();
     for (const c of clips) this.clips.set(c.name, c);
 
+    /** Names whose phase scrub runs backwards. See DERIVED in clips.js. */
+    this.reversed = new Set();
+    this._buildDerived();
+
     /** name -> AnimationAction, created lazily and kept forever. */
     this.actions = new Map();
     /** name -> current smoothed weight. */
@@ -71,6 +75,25 @@ export class AnimationController {
     this._warmup();
   }
 
+  /**
+   * Build the clips that are made from other clips — currently the back-pedal,
+   * which this pack does not ship and which is just the forward gait reversed.
+   *
+   * A real cloned AnimationClip rather than a flag on the forward one, because
+   * forward and back have to play SIMULTANEOUSLY at different weights while the
+   * blend crossfades between them; one action cannot do both.
+   */
+  _buildDerived() {
+    for (const [name, def] of Object.entries(DERIVED)) {
+      const src = this.clips.get(def.from);
+      if (!src) continue;
+      const clip = src.clone();
+      clip.name = name;
+      this.clips.set(name, clip);
+      if (def.reverse) this.reversed.add(name);
+    }
+  }
+
   /** Every clip the blend tree can reach, resolved up-front so a typo in
    *  clips.js surfaces at load rather than the first time you strafe. */
   _warmup() {
@@ -78,6 +101,12 @@ export class AnimationController {
     for (const [, v] of Object.entries(CLIPS)) {
       if (Array.isArray(v)) v.forEach((n) => wanted.add(n));
       else wanted.add(v);
+    }
+    // Sided melee clips are named at runtime, so resolve both sides now — a
+    // typo in the combo list should surface at load, not on the third punch.
+    for (const base of [...MELEE_COMBO, ...MELEE_EXTRA]) {
+      wanted.add(base + '_left');
+      wanted.add(base + '_right');
     }
     for (const name of wanted) {
       if (!this.clips.has(name)) { this.missing.push(name); continue; }
@@ -125,7 +154,7 @@ export class AnimationController {
     // walk <-> run inside the moving half.
     const runBlend = clamp01((speed - walk) / Math.max(run - walk, 0.001));
 
-    this.target.set(CLIPS.idle, 1 - moving);
+    this._want(CLIPS.idle, 1 - moving);
 
     // Pick the two cardinals either side of the travel direction and split the
     // weight between them by angle. Blending all four at once (bilinear on
@@ -153,8 +182,12 @@ export class AnimationController {
 
     for (const q of quad) {
       const share = (q.w / sum) * moving;
-      this.target.set(CLIPS['walk' + q.d], share * (1 - runBlend));
-      this.target.set(CLIPS['run' + q.d], share * runBlend);
+      // ADD, never set. The walk and run tiers can name the SAME clip — this
+      // pack ships one strafe take per side, used at both speeds — and setting
+      // would make the run tier silently erase the walk tier's contribution,
+      // so a strafe would fade out entirely in the middle of the speed range.
+      this._want(CLIPS['walk' + q.d], share * (1 - runBlend));
+      this._want(CLIPS['run' + q.d], share * runBlend);
     }
   }
 
@@ -174,7 +207,7 @@ export class AnimationController {
       up.reset();
       up.setLoop(THREE.LoopOnce, 1);
       up.clampWhenFinished = true;   // hold the final pose, do not snap to frame 0
-      up.timeScale = 1;
+      up.timeScale = (CLIP_TUNING[CLIPS.jumpUp] && CLIP_TUNING[CLIPS.jumpUp].timeScale) || 1;
       up.play();
     }
     const fall = this._action(CLIPS.fall);
@@ -201,8 +234,8 @@ export class AnimationController {
       // Once he is falling, the pop is over regardless of where the clip got to.
       if (vy < 0) pop = Math.min(pop, clamp01(1 + vy / 3));
     }
-    this.target.set(CLIPS.jumpUp, pop);
-    this.target.set(CLIPS.fall, 1 - pop);
+    this._want(CLIPS.jumpUp, pop);
+    this._want(CLIPS.fall, 1 - pop);
   }
 
   // ── one-shots ─────────────────────────────────────────────────────────────
@@ -272,6 +305,8 @@ export class AnimationController {
         const off = (CLIP_TUNING[name] && CLIP_TUNING[name].phase) || 0;
         let p = (this.phase + off) % 1;
         if (p < 0) p += 1;
+        // A derived back-pedal is the forward cycle scrubbed the other way.
+        if (this.reversed.has(name)) p = 1 - p;
         action.time = p * clip.duration;
       }
     }
@@ -281,6 +316,12 @@ export class AnimationController {
     this.target.clear();
 
     this.mixer.update(dt);
+  }
+
+  /** Accumulate a wanted weight for this frame. */
+  _want(name, w) {
+    if (!name) return;
+    this.target.set(name, (this.target.get(name) || 0) + w);
   }
 
   _isLocomotion(name) {

@@ -97,7 +97,39 @@ too washes every block to the same flat white and the character stops popping.
 
 ## The model
 
-### Two traps this GLB sets
+`models/handyman_game.glb` is the playable character (set in `src/main.js`).
+`donny_game.glb` is the previous one, kept in the repo but not loaded.
+
+54 clips, Mixamo rig (`mixamorig_*`, 65 joints), all IN-PLACE — no track
+translates the character, so code owns movement and the clip owns the pose.
+
+The exporter names every track `Armature|<name>|Layer0`; `loadCharacter` strips
+that once at load so `clips.js` can use the bare names.
+
+### What the pack does and does not have
+
+Complete: forward walk/run (three gaits), both strafes, full hang/ledge set
+(idle, shimmy, hop, climb-up, jump-to-hang), full cover set (in, idle, sneak,
+out — both sides), crouch idle + crouch strafes, a slide, and 15 mirrored
+left/right strike pairs.
+
+Missing, and worth knowing before you look for a bug:
+
+* **No backward walk or run.** `DERIVED` in `clips.js` builds one by cloning the
+  forward gait and scrubbing its phase backwards, which reads convincingly
+  because it is literally the forward cycle running in reverse.
+* **No turn-in-place**, and **no crouch forward walk** (only crouch strafes).
+
+### Strikes are mirrored, and the side alternates
+
+Every strike ships `_left` and `_right`. `MELEE_COMBO` lists unsided base names
+and `Character` appends the side, ALTERNATING down the chain from a random
+start. Re-rolling the side at random instead throws the same hand twice in a row
+often enough to read as a hitch.
+
+
+
+### Two traps these GLBs set
 
 Both of these cost real debugging time; they are documented at the call sites.
 
