@@ -53,6 +53,10 @@ export class AnimationController {
     this.clips = new Map();
     for (const c of clips) this.clips.set(c.name, c);
 
+    /** Clips whose duplicated last frame was trimmed. Debug only. */
+    this.trimmed = [];
+    this._trimLoopSeams();
+
     /** Names whose phase scrub runs backwards. See DERIVED in clips.js. */
     this.reversed = new Set();
     this._buildDerived();
@@ -73,6 +77,71 @@ export class AnimationController {
 
     this.missing = [];
     this._warmup();
+  }
+
+  /**
+   * Drop the duplicated final frame from cycles that have one.
+   *
+   * Every locomotion take in this pack ends on a byte-identical copy of its
+   * first frame — which is how a cycle is normally authored, so that the last
+   * key visually matches the first. Played back as a loop, though, that pose is
+   * displayed TWICE in a row: once as the last frame and again as the next
+   * cycle's first. At 24fps over a 14-frame sprint, that is a visible hitch
+   * every single stride, and it reads as a limp rather than as an export
+   * artefact.
+   *
+   * The fix is to end the cycle one frame BEFORE the duplicate. The tracks are
+   * left alone; only the clip's duration moves, and since the whole blend tree
+   * scrubs `time = phase * duration`, nothing ever lands on that frame again.
+   *
+   * Runs before _buildDerived so the reversed back-pedal inherits the trim.
+   */
+  _trimLoopSeams() {
+    for (const [name, clip] of this.clips) {
+      const step = this._frameStep(clip);
+      if (!step || clip.duration <= step * 2) continue;
+      if (!this._endsWhereItBegan(clip)) continue;
+      clip.duration -= step;
+      this.trimmed.push(name);
+    }
+  }
+
+  /** Seconds between keys on the clip's densest track, or 0 if unclear. */
+  _frameStep(clip) {
+    let best = null;
+    for (const t of clip.tracks) {
+      if (!best || t.times.length > best.times.length) best = t;
+    }
+    if (!best || best.times.length < 3) return 0;
+    const n = best.times.length;
+    return (best.times[n - 1] - best.times[0]) / (n - 1);
+  }
+
+  /** Does every track's last key hold the same value as its first? */
+  _endsWhereItBegan(clip) {
+    // Picked off the measured spread in this pack, not guessed. Clips whose
+    // last frame is a copy of the first land between 2e-6 and 3.2e-4 depending
+    // on how the exporter rounded them; clips that genuinely end somewhere else
+    // start at 3.0e-2 (hang_idle) and go up from there. Two clear orders of
+    // magnitude between the groups, so anything under 1e-3 is a duplicate.
+    //
+    // For scale: 1e-3 on a quaternion component is about a tenth of a degree.
+    // A tighter 1e-6 missed run_normal_forward and both crouch strafes, which
+    // are duplicates in every way that matters.
+    const EPS = 1e-3;
+    let checked = 0;
+    for (const t of clip.tracks) {
+      const n = t.times.length;
+      if (n < 3) continue;                       // constant tracks say nothing
+      const size = t.values.length / n;
+      for (let i = 0; i < size; i++) {
+        const first = t.values[i];
+        const last = t.values[(n - 1) * size + i];
+        if (Math.abs(first - last) > EPS) return false;
+      }
+      checked++;
+    }
+    return checked > 0;
   }
 
   /**

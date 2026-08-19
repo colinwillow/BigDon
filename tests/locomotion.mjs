@@ -359,6 +359,45 @@ console.log('\ndouble jump');
   ok('landing rearms the double jump', c.velocity.y > 0, `vy=${c.velocity.y.toFixed(2)}`);
 }
 
+console.log('\nloop seams');
+{
+  // Every cycle in this pack ends on a byte-identical copy of its first frame,
+  // which is how loops are authored — but played back that pose shows TWICE in
+  // a row, once as the last frame and again as the next cycle's first. At 24fps
+  // over a 14-frame sprint that is a visible hitch every stride.
+  // Distinct names matter: clips are keyed by name, so two called 'cycle' would
+  // simply overwrite each other in the map.
+  const build = (name, times, values) => {
+    const track = new THREE.VectorKeyframeTrack('.position', times, values);
+    return new THREE.AnimationClip(name, -1, [track]);
+  };
+  // 5 keys at 24fps; the last is a copy of the first.
+  const step = 1 / 24;
+  const t = [0, step, step * 2, step * 3, step * 4];
+  const dup = build('dup', t, [0,0,0,  1,0,0,  2,0,0,  1,0,0,  0,0,0]);
+  const clean = build('clean', t, [0,0,0,  1,0,0,  2,0,0,  1,0,0,  0.5,0,0]);
+  const durDup = dup.duration, durClean = clean.duration;
+
+  const model = new THREE.Object3D();
+  model.add(new THREE.Object3D());
+  const a = new Character(model, [dup, clean]).anim;
+
+  ok('a cycle with a duplicated last frame is trimmed',
+    Math.abs(a.clips.get('dup').duration - (durDup - step)) < 1e-6,
+    `duration ${durDup.toFixed(4)} -> ${a.clips.get('dup').duration.toFixed(4)}`);
+
+  // ...and one that genuinely ends somewhere else is left alone.
+  ok('a cycle that ends elsewhere is left alone',
+    Math.abs(a.clips.get('clean').duration - durClean) < 1e-9,
+    `duration=${a.clips.get('clean').duration.toFixed(4)}`);
+
+  // The trim must never eat a clip whole.
+  const tiny = build('tiny', [0, step], [0,0,0, 0,0,0]);
+  const cc = new Character(model, [tiny]).anim;
+  ok('a two-key clip is never trimmed', cc.clips.get('tiny').duration > 0,
+    `duration=${cc.clips.get('tiny').duration}`);
+}
+
 console.log('\nmodel orientation');
 {
   // The controller checks above all use a bare Object3D, so NONE of them can

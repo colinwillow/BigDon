@@ -47,6 +47,8 @@ const info = await page.evaluate(() => {
     clips: c.anim.clips.size,
     missing: c.anim.missing,
     selfLit, shiny, textured,
+    trimmed: c.anim.trimmed.length,
+    runDur: +c.anim.duration('run_fast_forward').toFixed(4),
   };
 });
 
@@ -92,6 +94,11 @@ ok('nothing on him is shiny', info.shiny === 0, `${info.shiny} material(s) still
 ok('the takeoff clip never restarts mid-jump', jump.rewinds === 0,
   `${jump.rewinds} rewind(s) — the clip is looping again`);
 ok('the jump actually gets high', jump.apex > 2.5, `apex=${jump.apex}m`);
+ok('duplicated loop frames were trimmed', info.trimmed > 0,
+  `${info.trimmed} clip(s) trimmed`);
+// 14 keys at 24fps authored to 0.5833s; minus the duplicate that is 0.5417s.
+ok('the sprint cycle lost exactly one frame',
+  Math.abs(info.runDur - (0.5833 - 1 / 24)) < 0.002, `run_fast_forward=${info.runDur}s`);
 ok('no console errors', errors.length === 0, errors.join(' | '));
 
 console.log(fail ? `\n${fail} failed\n` : '\nsmoke ok\n');

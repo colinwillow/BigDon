@@ -265,6 +265,24 @@ so the wall is on his left exactly when `n . right > 0`. See `_wallSide`.
 Releasing the stick keeps the last facing and side, which is what makes "shimmy
 left, let go, and he settles into `cover_idle_left`" work.
 
+### Cycles ship with a duplicated last frame
+
+Every locomotion take in this pack ends on a copy of its own first frame — the
+normal way to author a cycle, so the last key visually matches the first. Played
+as a loop that pose shows TWICE in a row, and at 24fps over a 14-frame sprint it
+is a visible hitch every stride that reads as a limp.
+
+`_trimLoopSeams` detects it and shortens the clip's DURATION by one frame; the
+tracks are untouched, and since the whole tree scrubs `time = phase * duration`,
+nothing lands on that frame again. It runs before `_buildDerived` so the
+reversed back-pedal inherits the trim.
+
+The epsilon is measured, not guessed. In this pack duplicates land between 2e-6
+and 3.2e-4 depending on export rounding, while clips that genuinely end
+elsewhere start at 3.0e-2 — two clear orders of magnitude, so the threshold sits
+at 1e-3. A tighter 1e-6 silently missed `run_normal_forward` and both crouch
+strafes.
+
 ### Reading frame counts off a clip
 
 These are 24fps. When a clip needs its head trimmed, measure it rather than
