@@ -8,6 +8,11 @@ npm start     # http://localhost:8123
 npm test
 ```
 
+Add it to a phone's home screen and it launches full-screen with no browser
+chrome. Icons live in `icons/`; change the art and rerun
+`python3 tools/make-icons.py` to rebuild every size from
+`icons/icon-source-1024.png`.
+
 ## Controls
 
 |            | left stick            | right stick                    |
@@ -26,6 +31,8 @@ On a laptop: `WASD` move, `SPACE` jump, `SHIFT` slide, `V` melee, drag to look,
 
 ```
 index.html          importmap + the touch-control DOM
+manifest.webmanifest  add-to-home-screen metadata
+icons/              app icons — regenerate with tools/make-icons.py
 styles.css
 vendor/three/       three r160, vendored — do not replace with a bundler
 models/             handyman_game.glb — 54 in-place tracks (the playable one)

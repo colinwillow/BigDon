@@ -321,6 +321,21 @@ the top before changing a threshold. The parts that look redundant and are not:
 The camera pans on thumb *movement*, not held deflection. That is what frees the
 out-and-still posture to mean "aiming", which is what makes hold-to-shoot work.
 
+## App icons
+
+`icons/`, all generated from `icons/icon-source-1024.png` by
+`python3 tools/make-icons.py`. Two things there are easy to get wrong:
+
+* **Apple icons are full-bleed, with no rounded corners baked in.** iOS applies
+  its own squircle mask, and pre-rounded art shows its own corners as dark
+  notches inside that mask. iOS also ignores the manifest entirely and reads the
+  `<link rel="apple-touch-icon">` tags, which is why those sizes are listed
+  separately from the PWA ones.
+* **Maskable icons need a safe zone.** Android crops them to whatever shape the
+  launcher likes and only guarantees the middle 80%, so the maskable variants
+  sit the art inside a padded background. The plain 512 loses the top of Big
+  Don's hair to a circular mask; the maskable one does not.
+
 ## The bar for "done"
 
 It runs on a phone, in portrait and in landscape, with two thumbs. Not "it works
