@@ -11,7 +11,7 @@ npm test
 Add it to a phone's home screen and it launches full-screen with no browser
 chrome. Icons live in `icons/`; change the art and rerun
 `python3 tools/make-icons.py` to rebuild every size from
-`icons/icon-source-1024.png`.
+`icons/icon_original.png`.
 
 ## Controls
 

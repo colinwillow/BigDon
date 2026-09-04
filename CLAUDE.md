@@ -323,18 +323,28 @@ out-and-still posture to mean "aiming", which is what makes hold-to-shoot work.
 
 ## App icons
 
-`icons/`, all generated from `icons/icon-source-1024.png` by
-`python3 tools/make-icons.py`. Two things there are easy to get wrong:
+`icons/`, all generated from `icons/icon_original.png` by
+`python3 tools/make-icons.py`. That file is the master — replace it and rerun
+the script rather than editing any of the eleven outputs. Three things there are
+easy to get wrong:
 
 * **Apple icons are full-bleed, with no rounded corners baked in.** iOS applies
   its own squircle mask, and pre-rounded art shows its own corners as dark
   notches inside that mask. iOS also ignores the manifest entirely and reads the
   `<link rel="apple-touch-icon">` tags, which is why those sizes are listed
   separately from the PWA ones.
-* **Maskable icons need a safe zone.** Android crops them to whatever shape the
-  launcher likes and only guarantees the middle 80%, so the maskable variants
-  sit the art inside a padded background. The plain 512 loses the top of Big
-  Don's hair to a circular mask; the maskable one does not.
+* **Maskable icons need their subject in the middle**, not necessarily a pad.
+  Android crops them to whatever the launcher likes and only guarantees the
+  middle 80%. The current art is already composed for that — Big Don is centred
+  and the background bleeds to every edge — so the maskable variants are the
+  SAME full-bleed art. Scaling down and padding the border was tried and looks
+  worse: the pad reads as a frame around the picture, and the mask then eats the
+  pad instead of the art. If the art ever changes to something with the subject
+  off-centre, that trade flips.
+* **Favicons get a tighter crop.** The full picture is three characters, which
+  below about 48px collapses into coloured mush. The 16/32/48 sizes come from a
+  head crop of the centre figure (`FAVICON_CROP` in the script), which holds a
+  readable blonde-on-blue silhouette at 16px.
 
 ## The bar for "done"
 
