@@ -84,7 +84,15 @@ export function flatten(root, opts = {}) {
         m.depthWrite = true;
         m.alphaTest = 0;
       }
-      if ('emissive' in m) {
+      // Only set self-illumination up when the MODEL does not already carry it.
+      // big_donny ships its own emissiveTexture and emissiveFactor, and
+      // overriding those threw away the strength the artist chose and
+      // re-derived it from the base map — the same picture, at a level nobody
+      // picked. The fallback below stays for models exported with no emissive
+      // at all, and for the world geometry built in code.
+      const ownEmissive = m.emissiveMap
+        && m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.01;
+      if ('emissive' in m && !ownEmissive) {
         if (m.map) {
           // Self-illuminate from the texture. White emissive + the map means
           // the emitted colour IS the painted colour, rather than a tint over it.

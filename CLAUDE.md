@@ -84,11 +84,17 @@ snap-out-and-return (out past 0.78, back inside 0.40, within 160ms); the
 There is no toon shader and no ink outline — the model's own texture maps are
 already stylised, so shading them again just fought them. The look is Robits':
 
-* the base colour map is fed back in as an **emissive map** at ~0.9, so the
-  character is lit by his own paint and reads at full saturation
-* `metalness 0, roughness 1` — a GLB arrives with mid PBR values, and that
-  moving specular hotspot is what made a hand-painted texture look like wet
-  plastic
+* the character is lit by his own paint, so his colours read at full saturation.
+  `big_donny.glb` ships this itself — an `emissiveTexture` plus an
+  `emissiveFactor` of 0.6 — and `flatten()` LEAVES A MODEL'S OWN EMISSIVE ALONE.
+  It only feeds the base colour map back in as an emissive map (at `EMISSIVE`,
+  0.92) when the model arrives with none, which covers older exports and the
+  world geometry built in code. Overriding an artist-set emissive throws away
+  the strength they chose and re-derives it at a level nobody picked.
+* `metalness 0, roughness 1`, and `specularIntensity`/clearcoat/sheen zeroed —
+  a GLB arrives with mid PBR values and often a `KHR_materials_specular` boost
+  (big_donny's is 2.0), and that moving specular hotspot is what made a
+  hand-painted texture look like wet plastic. This part is still forced.
 * **ACES tone mapping at exposure 1.1**. Counter-intuitive with an emissive
   texture, but `NoToneMapping` clips every bright pixel to flat white
 
