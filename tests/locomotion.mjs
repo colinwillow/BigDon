@@ -173,25 +173,35 @@ console.log('\njump');
 
 console.log('\nslide');
 {
-  const c = makeChar();
+  // WITH A CLIP. The slide ends at min(slideDuration, the clip's own length),
+  // and a Character built with no clips reports a length of 0 — so every check
+  // in here used to run against a slide that was over on the frame it started.
+  // It still passed, because none of them measured how far he actually got.
+  const c = makeCharWith(['run_slide'], 1.6);
   const fired = c.requestSlide(0);          // 0 => forward is +Z
   ok('slide fires when off cooldown', fired === true);
   ok('slide enters slide state', c.state === 'slide', `state=${c.state}`);
   run(c, 0.1, {});
   ok('slide travels +Z for angle 0', c.position.z > 0.2, `z=${c.position.z.toFixed(2)}`);
   ok('slide ignores the stick', near(c.position.x, 0, 1e-6), `x=${c.position.x}`);
+  run(c, TUNING.slideDuration, { moveX: 1 });
+  ok('and it is a long committed slide, not a hop',
+    c.position.z > 8, `${c.position.z.toFixed(1)}m before it ends`);
+  const end = c.position.z;
   run(c, 1.0, {});
   ok('slide ends and returns to ground', c.state === 'ground', `state=${c.state}`);
+  ok('and it stops rather than trailing off across the map',
+    c.position.z - end < 1.5, `drifted ${(c.position.z - end).toFixed(2)}m after`);
 }
 {
-  const c = makeChar();
+  const c = makeCharWith(['run_slide'], 1.6);
   c.requestSlide(0);
   const again = c.requestSlide(0);
   ok('slide respects its cooldown', again === false);
 }
 {
   // Direction check for the slide, separate from distance.
-  const c = makeChar();
+  const c = makeCharWith(['run_slide'], 1.6);
   c.requestSlide(Math.PI / 2);              // PI/2 => +X
   run(c, 0.12, {});
   ok('slide at PI/2 travels +X', c.position.x > 0.2, `x=${c.position.x.toFixed(2)}`);
@@ -375,6 +385,50 @@ console.log('\ndouble jump');
   ok('landing rearms the double jump', c.velocity.y > 0, `vy=${c.velocity.y.toFixed(2)}`);
 }
 
+console.log('\nwinding up to speed');
+{
+  // He BUILDS to a sprint rather than arriving at one. The old accel of 72
+  // reached top speed in 0.13s, which is a step function with extra steps, and
+  // it is what made the long jump's run-up worth nothing.
+  const c = makeChar();
+  run(c, 0.10, { moveZ: -1 });
+  const early = c.speed;
+  ok('a tenth of a second in, he is still well under top speed',
+    early < TUNING.runSpeed * 0.5, `speed=${early.toFixed(2)}`);
+  ok('but he is already moving', early > 1, `speed=${early.toFixed(2)}`);
+  run(c, 0.20, { moveZ: -1 });
+  const mid = c.speed;
+  ok('and still climbing at 0.3s', mid > early + 2 && mid < TUNING.runSpeed,
+    `${early.toFixed(2)} -> ${mid.toFixed(2)}`);
+  run(c, 0.30, { moveZ: -1 });
+  ok('reaching top speed inside about half a second',
+    near(c.speed, TUNING.runSpeed, 0.05), `speed=${c.speed.toFixed(2)}`);
+}
+{
+  // ...and STEERING is not the same rate. Slowing them together makes him
+  // skate through every direction change, so the correction across his heading
+  // keeps the old snappy number. A check that only measured the wind-up would
+  // pass with turns taking most of a second.
+  const c = makeChar();
+  run(c, 2.0, { moveZ: -1 });
+  let t = 0;
+  while (c.velocity.x < TUNING.runSpeed * 0.9 && t < 3) {
+    run(c, 1 / 60, { moveX: 1 });
+    t += 1 / 60;
+  }
+  ok('a right-angle turn at full speed is quicker than the wind-up was',
+    t < 0.25, `${t.toFixed(3)}s`);
+  ok('and he really is going the new way', c.velocity.x > TUNING.runSpeed * 0.9,
+    `vx=${c.velocity.x.toFixed(2)}`);
+}
+{
+  // Stopping stays crisp — decel is untouched.
+  const c = makeChar();
+  run(c, 2.0, { moveZ: -1 });
+  run(c, 0.15, {});
+  ok('letting go still stops him quickly', c.speed < 1.0, `speed=${c.speed.toFixed(2)}`);
+}
+
 console.log('\nmelee turns, it does not teleport');
 {
   // The flick angle is where he ENDS UP, not where he is put. Assigning facing
@@ -477,36 +531,93 @@ console.log('\ncrouch and the long jump');
     near(c.velocity.y, TUNING.jumpSpeed, 1e-6), `vy=${c.velocity.y.toFixed(2)}`);
 }
 {
-  // The Mario move: release while still sliding fast and the jump goes FLAT
-  // and FAR rather than high. Both halves matter — boosting the ground speed
-  // without lowering the launch just makes a longer normal jump.
-  const long = makeChar();
-  run(long, 2.0, { moveZ: -1 });
-  long.startCrouch();
-  run(long, TUNING.crouchMinTime + 1 / 60, {});
-  ok('still above the long-jump threshold', long.speed >= TUNING.longJumpAt,
-    `speed=${long.speed.toFixed(2)}`);
-  const groundSpeed = long.speed;
-  long.releaseCrouch();
-  ok('a long jump launches lower', long.velocity.y < TUNING.jumpSpeed,
-    `vy=${long.velocity.y.toFixed(2)} vs ${TUNING.jumpSpeed}`);
-  ok('and much faster along the ground', long.speed > groundSpeed * 1.4,
-    `${groundSpeed.toFixed(2)} -> ${long.speed.toFixed(2)}`);
+  // The Mario move, and THE BASELINE IS A RUNNING JUMP. An earlier version of
+  // this block compared the long jump against one taken from a standstill
+  // crouch, which it beat comfortably while actually being WORSE than just
+  // running and jumping — 7.8m against 9.5m, and launching lower too. Measure
+  // it against the thing a player would otherwise do.
+  const arc = (setup) => {
+    const c = makeChar();
+    run(c, 2.0, { moveZ: -1 });
+    const z0 = c.position.z;
+    setup(c);
+    let apex = 0;
+    for (let i = 0; i < 400; i++) {
+      run(c, 1 / 60, { moveZ: -1 });
+      apex = Math.max(apex, c.position.y);
+      if (c.grounded && i > 10) break;
+    }
+    return { dist: z0 - c.position.z, apex };
+  };
+  const normal = arc((c) => c.requestJump());
+  const long = arc((c) => {
+    c.startCrouch();
+    run(c, TUNING.crouchMinTime + 1 / 60, {});
+    c.releaseCrouch();
+  });
 
-  // Distance, measured against the same jump taken from a standstill-ish
-  // crouch: the whole point is that it goes further.
-  const lz = long.position.z;
-  run(long, 3.0, {});
-  const longDist = lz - long.position.z;
+  ok('a long jump goes considerably further than a running jump',
+    long.dist > normal.dist * 1.7,
+    `${long.dist.toFixed(1)}m vs ${normal.dist.toFixed(1)}m`);
+  ok('and higher, not flatter', long.apex > normal.apex * 1.25,
+    `${long.apex.toFixed(2)}m vs ${normal.apex.toFixed(2)}m`);
 
-  const normal = makeChar();
-  run(normal, 2.0, { moveZ: -1 });
-  normal.requestJump();
-  const nz = normal.position.z;
-  run(normal, 3.0, {});
-  const normalDist = nz - normal.position.z;
-  ok('a long jump covers more ground than a running jump',
-    longDist > normalDist, `${longDist.toFixed(2)}m vs ${normalDist.toFixed(2)}m`);
+  // The horizontal half scales with what he carried in, so a sprint is worth
+  // more than a jog — that is the skill in it.
+  const launchFrom = (runUp) => {
+    const c = makeChar();
+    run(c, runUp, { moveZ: -1 });
+    c.startCrouch();
+    run(c, TUNING.crouchMinTime + 1 / 60, {});
+    const entry = c.speed;
+    c.releaseCrouch();
+    return { entry, launch: c.speed };
+  };
+  const sprint = launchFrom(2.0);
+  const jog = launchFrom(0.30);
+  ok('a jog still clears the threshold', jog.entry >= TUNING.longJumpAt,
+    `entry=${jog.entry.toFixed(2)} threshold=${TUNING.longJumpAt}`);
+  ok('a sprint enters the crouch faster than a jog does',
+    sprint.entry > jog.entry + 1, `${jog.entry.toFixed(2)} vs ${sprint.entry.toFixed(2)}`);
+  ok('and the launch is that entry speed scaled, so the run-up is worth doing',
+    near(jog.launch, jog.entry * TUNING.longJumpBoost, 1e-6)
+    && near(sprint.launch, sprint.entry * TUNING.longJumpBoost, 1e-6),
+    `${jog.entry.toFixed(2)}->${jog.launch.toFixed(2)}, ` +
+    `${sprint.entry.toFixed(2)}->${sprint.launch.toFixed(2)}`);
+
+  // ...and below the threshold there is no long jump at all.
+  const shuffle = makeChar();
+  run(shuffle, 0.08, { moveZ: -1 });
+  shuffle.startCrouch();
+  run(shuffle, TUNING.crouchMinTime + 1 / 60, {});
+  ok('a shuffle is under the threshold', shuffle.speed < TUNING.longJumpAt,
+    `speed=${shuffle.speed.toFixed(2)}`);
+  shuffle.releaseCrouch();
+  ok('and gets an ordinary jump, not a long one',
+    near(shuffle.velocity.y, TUNING.jumpSpeed, 1e-6),
+    `vy=${shuffle.velocity.y.toFixed(2)}`);
+}
+{
+  // Air control STEERS. It used to be handed the ground's wantSpeed, which
+  // pulled a long jump back to runSpeed inside 0.2s — the boost was there at
+  // launch and gone before the apex, which is most of why the move did not
+  // read as one.
+  const c = makeChar();
+  run(c, 2.0, { moveZ: -1 });
+  c.startCrouch();
+  run(c, TUNING.crouchMinTime + 1 / 60, {});
+  c.releaseCrouch();
+  const launch = c.speed;
+  run(c, 0.35, { moveZ: -1 });          // holding forward all the way
+  ok('holding forward in the air does not brake the launch',
+    c.speed > launch * 0.98, `${launch.toFixed(2)} -> ${c.speed.toFixed(2)}`);
+  ok('and the launch was well over run speed', launch > TUNING.runSpeed * 1.5,
+    `launch=${launch.toFixed(2)} runSpeed=${TUNING.runSpeed}`);
+  // Letting go must not brake him either.
+  const free = c.speed;
+  run(c, 0.2, {});
+  ok('and letting go of the stick does not either',
+    near(c.speed, free, 1e-6), `${free.toFixed(2)} -> ${c.speed.toFixed(2)}`);
 }
 {
   // Guards. A crouch must not open a hole in the other states, and a press

@@ -185,7 +185,14 @@ export const TUNING = {
   runSpeed: 9.6,
   runAt: 0.45,          // Robits' _RUN_DEAD — commit to the run early
 
-  accel: 72,            // reaches full run in about 0.13s
+  // WIND-UP, not a step function. accel is the rate ALONG his heading, so it
+  // is what decides how long a sprint takes to reach: 9.6 / 26 is about 0.37s,
+  // where the old 72 got there in 0.13s and read as instant. turnAccel is the
+  // rate ACROSS it — steering — and keeps the old snappy number, because
+  // slowing the two together makes him skate through every direction change.
+  // See _accelerate.
+  accel: 26,
+  turnAccel: 72,
   decel: 88,
   airControl: 0.45,
 
@@ -262,15 +269,20 @@ export const TUNING = {
   crouchMinTime: 0.11,
   // (the thumb thresholds that decide a press IS a crouch live with the stick,
   //  in Input.js — CROUCH_ARM_MS and CROUCH_MAX_PUSH.)
-  // Release above this speed and the jump becomes a LONG jump: flatter, faster,
-  // and much further. Below it, an ordinary jump.
-  longJumpAt: 4.5,
-  longJumpSpeed: 11.0,      // less up...
-  longJumpBoost: 1.6,       // ...and considerably more along the ground
+  // Release above this speed and the jump becomes a LONG JUMP: higher AND much
+  // further, and the horizontal half scales with whatever speed he carried in,
+  // so it is worth being at a full sprint. This is the move you clear a gap
+  // with, so it has to be plainly better than a running jump rather than a
+  // variation on one — the first pass launched LOWER than a normal jump and
+  // measured 7.8m against a running jump's 9.5m, which is why it read as
+  // "maybe a little more".
+  longJumpAt: 6.0,          // needs a real run-up, not a shuffle
+  longJumpSpeed: 19.0,      // 5.6m apex against a normal jump's 4.0m...
+  longJumpBoost: 1.9,       // ...and nearly twice the ground speed with it
 
   // ── slide tackle (left-stick flick) ──────────────────────────────────────
-  slideSpeed: 17.0,
-  slideDuration: 0.55,
+  slideSpeed: 21.0,
+  slideDuration: 0.85,
   slideCooldown: 0.30,
 
   // ── animation blending ───────────────────────────────────────────────────

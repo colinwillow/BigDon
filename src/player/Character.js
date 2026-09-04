@@ -558,7 +558,15 @@ export class Character {
         break;
       }
       case 'air':
-        this._accelerate(dt, this._moveWorld, wantSpeed, this.T.airControl);
+        // AIR CONTROL STEERS, IT DOES NOT BRAKE. Feeding it the ground's
+        // wantSpeed meant a long jump's whole horizontal boost was pulled back
+        // to runSpeed inside 0.2s — the launch was there and then it was gone,
+        // which is most of why the long jump did not read as one. Letting go of
+        // the stick must not brake him either: no stick, no change.
+        if (intent > 0.05) {
+          this._accelerate(dt, this._moveWorld,
+            Math.max(wantSpeed, this.speed), this.T.airControl);
+        }
         // The flip is a one-shot over the top of the air pose; end it when the
         // clip is done or he keeps flipping all the way down.
         if (this.anim.busy && this._stateT >= this._oneShotEnds) this.anim.endOneShot();
@@ -705,22 +713,49 @@ export class Character {
     this.model.rotation.y = this.facing + this.modelYawOffset;
   }
 
+  /**
+   * Move the velocity toward `dir * wantSpeed`.
+   *
+   * BUILDING SPEED AND CHANGING DIRECTION ARE DIFFERENT RATES, and one number
+   * for both is a false economy. Dropping a single `accel` low enough that he
+   * winds up to a sprint (rather than reaching it in 0.13s, which is a step
+   * function with extra steps) also makes a full-speed reversal take most of a
+   * second — he skates through every turn. So the correction is split against
+   * his current heading: the part ALONG it is winding up or slowing down and
+   * uses accel/decel, the part ACROSS it is steering and keeps the snappy
+   * turnAccel.
+   *
+   * From a standstill there is no heading to split against, so the whole thing
+   * is a wind-up.
+   */
   _accelerate(dt, dir, wantSpeed, authority) {
     const wantX = dir.x * wantSpeed;
     const wantZ = dir.z * wantSpeed;
-    const rate = (wantSpeed > 0.01 ? this.T.accel : this.T.decel) * authority;
-    const maxStep = rate * dt;
-
     const dx = wantX - this.velocity.x;
     const dz = wantZ - this.velocity.z;
     const d = Math.hypot(dx, dz);
-    if (d <= maxStep || d < 1e-5) {
-      this.velocity.x = wantX;
-      this.velocity.z = wantZ;
-    } else {
+    if (d < 1e-5) return;
+
+    const s = Math.hypot(this.velocity.x, this.velocity.z);
+    if (s < 0.05 || wantSpeed <= 0.01) {
+      // Standing start, or coming to a stop: one rate, straight at the target.
+      const rate = (wantSpeed > 0.01 ? this.T.accel : this.T.decel) * authority;
+      const maxStep = rate * dt;
+      if (d <= maxStep) { this.velocity.x = wantX; this.velocity.z = wantZ; return; }
       this.velocity.x += (dx / d) * maxStep;
       this.velocity.z += (dz / d) * maxStep;
+      return;
     }
+
+    const hx = this.velocity.x / s, hz = this.velocity.z / s;   // heading
+    const along = dx * hx + dz * hz;              // + = wind up, - = bleed off
+    const across = dx * -hz + dz * hx;            // steering
+    const alongRate = (along >= 0 ? this.T.accel : this.T.decel) * authority;
+    const a = clamp(along, -alongRate * dt, alongRate * dt);
+    const c = clamp(across, -this.T.turnAccel * authority * dt,
+                    this.T.turnAccel * authority * dt);
+    this.velocity.x += hx * a - hz * c;
+    this.velocity.z += hz * a + hx * c;
   }
 
   _updateFacing(dt, intent) {

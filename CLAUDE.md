@@ -42,7 +42,7 @@ Two consequences worth knowing:
 
 ```sh
 npm start            # static server on :8123
-node tests/locomotion.mjs   # 106 controller checks, no browser needed
+node tests/locomotion.mjs   # 121 controller checks, no browser needed
 node tests/collision.mjs    # 53 collision checks, no browser needed
 node tests/smoke.mjs        # boots the real game in Chromium
 node tests/gestures.mjs     # drives the sticks with real touch events
@@ -53,6 +53,12 @@ CLIP=standing_melee_attack_backhand node tests/clipstrip.mjs   # audition any cl
 
 `tests/locomotion.mjs` steps `Character` at a fixed dt with a stub model, so the
 numbers don't depend on the renderer, the GPU, or the GLB.
+
+**A stub with NO CLIPS ends every one-shot on the frame it starts**, because
+`play()` reports a length of 0 and the slide and melee states time themselves
+off it. Checks written against `makeChar()` therefore measured a slide that was
+already over — and passed, because none of them measured how far he got. Use
+`makeCharWith(['run_slide'])` for anything that happens DURING a one-shot.
 
 **When you add a check, ask what it would still pass with.** A suite that only
 measures distance passes happily while movement runs backwards. Several checks
@@ -257,6 +263,35 @@ maths can be tested headlessly against a synthetic rig — `loadCharacter.js`
 imports `GLTFLoader`, which imports the bare specifier `three` and cannot be
 loaded into node.
 
+## He winds up to a sprint; he does not arrive at one
+
+`accel` used to be 72, which reached top speed in **0.13s** — a step function
+with extra steps, and it made a long jump's run-up worth nothing. It is 26 now,
+about 0.37s to a full sprint, and the walk/run blend follows real speed
+(`AnimationController.locomotion` blends on `speed`, not on stick deflection)
+so the gait winds up with him for free.
+
+**Building speed and changing direction are different rates**, and one number
+for both is a false economy: dropping a single `accel` low enough to give a
+wind-up also makes a full-speed reversal take most of a second, and he skates
+through every turn. So `_accelerate` splits the correction against his current
+heading — the part ALONG it is winding up or slowing down (`accel` / `decel`),
+the part ACROSS it is steering and keeps the old snappy `turnAccel` of 72. A
+right-angle turn at full speed still resolves in 0.20s; with one rate it is
+0.30s and rising.
+
+Careful when testing this: on a 180 the correction is almost entirely *along*
+the heading and negative, so it runs at `decel` and stays fast whatever
+`turnAccel` is. Only a turn with a real perpendicular component measures
+steering.
+
+**Air control STEERS, it does not brake.** It used to be handed the ground's
+`wantSpeed`, so a long jump's whole horizontal boost was pulled back to
+`runSpeed` inside 0.2s — the launch was there and then it was gone, which is
+most of why the move did not read as one. Now the air's target is
+`max(wantSpeed, current speed)`, and no stick means no change at all rather
+than a brake.
+
 ## Collision
 
 `src/world/Collider.js`. Everything solid is an axis-aligned box, so this is
@@ -322,11 +357,20 @@ a ledge should be the level's fault, not the player's.
   does not launch, it ARMS, and `_update` fires it once the pose has had time to
   read against `blendHL`. Launching on the release meant a tap showed no crouch
   at all, which is the whole reason the jump moved onto a press and a release.
-* **Held, the crouch is a slide, and it feeds a LONG JUMP** — the Mario move.
-  Momentum carries and bleeds off against `crouchFriction`; release above
-  `longJumpAt` and the launch goes flatter (`longJumpSpeed`, below the normal
-  `jumpSpeed`) and much faster along the ground (`longJumpBoost`). Boosting the
-  ground speed without lowering the launch just makes a longer normal jump.
+* **Held, the crouch is a slide, and it feeds a LONG JUMP** — the Mario move,
+  and the thing you clear a gap with. Momentum carries and bleeds off against
+  `crouchFriction`; release above `longJumpAt` (6.0 m/s, so it wants a real
+  run-up) and he launches HIGHER as well as much further — measured, **19.7m
+  and 5.6m against a running jump's 9.5m and 3.9m**. The horizontal half is
+  `longJumpBoost` times whatever speed he carried in, so the run-up is worth
+  doing.
+
+  The first pass had it launching *lower* than a normal jump on the theory that
+  a long jump should be flat. Measured, that came out at 7.8m against a running
+  jump's 9.5m — strictly worse than not bothering. **Always measure a move
+  against the thing a player would otherwise do**: the check that let this
+  through compared the long jump against one taken from a standstill crouch,
+  which it beat comfortably.
 
 ### The jump thumb is also the camera
 
@@ -456,6 +500,9 @@ renders a filmstrip to check against.
 ### Hanging only matters above the jump
 
 The apex is 4.0m, so anything shorter is a hurdle and he sails clean over it.
+A LONG jump reaches 5.6m, so the test world's 5m wall is now clearable if you
+earn it — which is the point of the move, but worth knowing before treating a
+wall as a hard boundary.
 The test world's 5m wall exists for this. Two collision tests originally failed
 for exactly this reason and the code was fine both times: one jumped a 2.4m
 block, and one "no headroom" case put a thin slab above the ledge whose own top
