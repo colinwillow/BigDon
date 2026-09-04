@@ -51,6 +51,9 @@ export const CLIPS = {
   standJumpToHang: 'stand_jump_to_hang',
 
   // ── cover / wall press (mapped, state machine still to come) ─────────────
+  // stand_to_cover_* are NOT used: measured against the rig they are a ~140
+  // degree turn-around, so entering cover played him spinning to face the wrong
+  // way and then snapping into the idle. The facing eases in instead.
   coverInL: 'stand_to_cover_left',
   coverInR: 'stand_to_cover_right',
   coverIdleL: 'cover_idle_left',

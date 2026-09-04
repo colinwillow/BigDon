@@ -8,6 +8,7 @@ import * as THREE from '../vendor/three/three.module.js';
 import { Collider } from '../src/world/Collider.js';
 import { Character } from '../src/player/Character.js';
 import { TUNING } from '../src/player/clips.js';
+import { wrapAngle } from '../src/core/math.js';
 
 let pass = 0, fail = 0;
 const ok = (name, cond, detail = '') => {
@@ -298,40 +299,51 @@ console.log('\ncover');
 }
 
 {
-  // COVER FACING. The _left and _right takes are authored facing OPPOSITE ways
-  // — they mean "the wall is on my left" / "on my right", not a lean. So he
-  // stands PARALLEL to the wall, never facing into or away from it, and turns
-  // to face whichever way he travels along it. Facing into the wall (the first
-  // version) made him appear to spin round when the sided clip swapped.
-  const col = new Collider().addBox(0, 1.5, 3, 6, 3, 0.6);   // face at z=2.7, normal -Z
+  // COVER FACING. He stands with his BACK to the wall, facing out along its
+  // outward normal, and that facing NEVER changes while he is on it. The sided
+  // takes are a LEAN (measured at only -25/+25 degrees off the model's forward),
+  // not opposite facings — reading them as opposite facings put him 90 degrees
+  // out, facing down the wall, and made him spin 180 degrees every time the
+  // side swapped.
+  const col = new Collider().addBox(0, 1.5, 3, 6, 3, 0.6);   // face z=2.7, normal -Z
   const c = makeChar(col);
   c.position.set(0, 0, 0); c.facing = 0;
   run(c, 1.2, { moveZ: 1 });
   c._tryCover();
-  ok('entering cover faces along the wall, not into it',
-    Math.abs(Math.abs(c.facing) - Math.PI / 2) < 1e-6,
-    `facing=${c.facing.toFixed(3)} (should be +-PI/2, i.e. along X)`);
+  run(c, 0.5, {});                                  // let the facing ease in
+  ok('cover faces out along the wall normal, not along the wall',
+    Math.abs(Math.abs(c.facing) - Math.PI) < 1e-3,
+    `facing=${c.facing.toFixed(3)} (normal is -Z, so PI)`);
 
+  const facingBefore = c.facing;
   run(c, 0.4, { moveX: 1 });
-  const facingRight = c.facing;
-  const sideRight = c._coverSideHeld;
-  ok('travelling +X faces +X', Math.abs(facingRight - Math.PI / 2) < 1e-6,
-    `facing=${facingRight.toFixed(3)}`);
-  // Facing +X his right is +Z; the wall is at +Z, so it is on his right.
-  ok('with the wall at +Z and facing +X, the wall is on his RIGHT',
-    sideRight === 'right', `side=${sideRight}`);
+  const sideA = c._coverSideHeld;
+  ok('sliding one way does not change his facing',
+    Math.abs(c.facing - facingBefore) < 1e-6, `facing=${c.facing.toFixed(4)}`);
 
   run(c, 0.4, { moveX: -1 });
-  ok('travelling -X turns him to face -X',
-    Math.abs(c.facing + Math.PI / 2) < 1e-6, `facing=${c.facing.toFixed(3)}`);
-  ok('and now the wall is on his LEFT', c._coverSideHeld === 'left',
-    `side=${c._coverSideHeld}`);
+  ok('sliding the other way does not change it either',
+    Math.abs(c.facing - facingBefore) < 1e-6, `facing=${c.facing.toFixed(4)}`);
+  ok('but the lean side does swap', c._coverSideHeld !== sideA,
+    `${sideA} -> ${c._coverSideHeld}`);
+
+  // Entering cover must be a TURN, not a teleport.
+  const c2 = makeChar(new Collider().addBox(0, 1.5, 3, 6, 3, 0.6));
+  c2.position.set(0, 0, 0); c2.facing = 0;
+  run(c2, 1.2, { moveZ: 1 });
+  c2._tryCover();
+  const f0 = c2.facing;
+  run(c2, 1 / 60, {});
+  const step = Math.abs(wrapAngle(c2.facing - f0));
+  ok('he turns into cover rather than snapping',
+    step > 1e-6 && step <= TUNING.turnRate / 60 + 1e-6,
+    `turned ${(step * 180 / Math.PI).toFixed(1)} deg in one frame`);
 
   // Releasing the stick must LEAVE him as he was, not snap him back.
   const held = c._coverSideHeld, facing = c.facing;
   run(c, 0.5, {});
   ok('letting go keeps the last facing', Math.abs(c.facing - facing) < 1e-6);
-  ok('letting go keeps the last side', c._coverSideHeld === held);
+  ok('letting go keeps the last lean', c._coverSideHeld === held);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

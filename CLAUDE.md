@@ -284,21 +284,27 @@ the legs under him, which is what a jump looks like. A ~1s hang is not long
 enough to read a takeoff/rise/fall sequence; blending three across it looks like
 a stutter.
 
-### Cover: the sided clips face opposite ways
+### Cover: back to the wall, and the sided clips are a LEAN
 
-`cover_idle_left` and `cover_idle_right` are NOT a lean — they are authored
-facing 180 degrees apart, and they mean *the wall is on my left* / *on my
-right*. So he stands PARALLEL to the wall, facing along it, and turns to face
-whichever way he travels; he never faces into or away from it. Facing him into
-the wall (the first version) made him appear to spin round every time the sided
-clip swapped.
+He stands with his BACK to the wall, facing out along its outward normal, and
+that facing does not change while he is on it. `cover_idle_left` and
+`cover_idle_right` are a LEAN, not opposite facings — measured against the rig
+they sit at only -25 and +25 degrees off the model's forward, and the sneaks at
++9 / -9.
 
-The side is then pure geometry, not stick direction. With forward = `(sin f,
-cos f)` his right is `(-cos f, sin f)`, and the wall lies along `-n` from him,
-so the wall is on his left exactly when `n . right > 0`. See `_wallSide`.
+Reading them as opposite facings (the first version) put him exactly 90 degrees
+out — facing along the wall rather than off it — and made him spin 180 degrees
+every time the side swapped. Measure a clip's authored facing rather than
+guessing it: pose the model at mid-clip and read the Hips or Spine1 bone's world
++Z axis, with a plain forward walk as the control.
 
-Releasing the stick keeps the last facing and side, which is what makes "shimmy
-left, let go, and he settles into `cover_idle_left`" work.
+`stand_to_cover_left/right` are NOT used. They are a ~140 degree turn-around, so
+playing one on entry spun him to face the wrong way and then snapped into the
+idle. Easing the facing covers the transition without it.
+
+**Never assign `facing` in a held state — ease it.** Setting it directly is what
+made him teleport between rotations. A change of state has to be a turn you can
+watch.
 
 ### Cycles ship with a duplicated last frame
 
@@ -344,6 +350,10 @@ the top before changing a threshold. The parts that look redundant and are not:
   look at your thumbs on a phone.
 * **The flick peak latch** — a flick can peak and return between two frames at
   30fps, and a per-frame sample misses it entirely.
+* **Look is a RATE, not a position.** Right-stick deflection sets how fast the
+  view turns, with a small deadzone (0.06) and a cubic-blend curve. Reading the
+  stick's absolute direction instead, gated at 0.38, meant small pushes did
+  nothing and the rim snapped the whole view round at once.
 * **Flick as a *candidate*** — a fast pan and a flick are both fast, so the flick
   can't fire on crossing a threshold. It resolves on what happens next: snapped
   back or released → flick; still travelling after 200ms → it was a pan. Camera

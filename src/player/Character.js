@@ -241,17 +241,19 @@ export class Character {
     this.cover = w;
     this._hangT = w.nz !== 0 ? this.position.x : this.position.z;
     this._coverPullT = 0;
-    // Face ALONG the wall, not into it. He flattens against it side-on, so his
-    // facing is the direction he will travel — set from whichever way he was
-    // already moving along it, defaulting to +tangent.
-    const a = this._alongSurface(w);
-    this._coverDir = a.input < -0.1 ? -1 : 1;
-    this.facing = this._facingAlong(w, this._coverDir);
-    this._coverSideHeld = this._wallSide(this.facing, w);
+    // BACK TO THE WALL, facing out along its outward normal. The cover takes are
+    // authored that way: measured against the rig, cover_idle_left/right sit at
+    // only -25/+25 degrees off the model's forward — a LEAN, not opposite
+    // facings. Pointing him along the tangent instead put him exactly 90
+    // degrees out, which is what "he faces down the wall" was.
+    this._coverFacing = Math.atan2(w.nx, w.nz);
+    this._coverSideHeld = 'right';
     this._enter('cover');
-    this._oneShotEnds = this.anim.play(
-      this._coverSideHeld === 'left' ? CLIPS.coverInL : CLIPS.coverInR
-    );
+    // NO stand_to_cover clip. That take is a ~140 degree turn-around, so it
+    // played him spinning to face the wrong way and then snapped into the idle
+    // — the twitch on entry. Easing the facing (see _updateFacing) covers the
+    // transition on its own.
+    this._oneShotEnds = 0;
     return true;
   }
 
@@ -272,31 +274,6 @@ export class Character {
     const tz = n.nz !== 0 ? 0 : 1;
     const input = this._moveWorld.x * tx + this._moveWorld.z * tz;
     return { tx, tz, input };
-  }
-
-  /**
-   * Which sided cover clip to play, given a facing.
-   *
-   * The `_left` and `_right` takes are authored facing OPPOSITE directions —
-   * they mean "the wall is on my left" and "the wall is on my right", not a
-   * lean. So he stands PARALLEL to the wall facing along it, and the side is
-   * decided by geometry, not by which way the stick went.
-   *
-   * With forward = (sin f, cos f), his right is (-cos f, sin f). The wall lies
-   * in direction -n from him (n is the outward normal, pointing at him), so the
-   * wall is on his left exactly when n . right > 0.
-   */
-  _wallSide(facing, n) {
-    const rx = -Math.cos(facing);
-    const rz = Math.sin(facing);
-    return (n.nx * rx + n.nz * rz) > 0 ? 'left' : 'right';
-  }
-
-  /** Facing that runs ALONG a surface in the direction `sign`. */
-  _facingAlong(n, sign) {
-    const tx = n.nz !== 0 ? 1 : 0;
-    const tz = n.nz !== 0 ? 0 : 1;
-    return Math.atan2(tx * sign, tz * sign);
   }
 
   leaveCover() {
@@ -445,11 +422,6 @@ export class Character {
       }
       case 'cover': {
         const w = this.cover;
-        // The stand_to_cover one-shot has to be ENDED, or its overlay sits at
-        // full weight forever and scales the cover idle/sneak clips to zero —
-        // which looked exactly like "the cover animations never play".
-        if (this.anim.busy && this._stateT >= this._oneShotEnds) this.anim.endOneShot();
-
         const a = this._alongSurface(w);
         const pad = this.T.radius;
         if (Math.abs(a.input) > 0.15) {
@@ -457,22 +429,21 @@ export class Character {
             this._hangT + a.input * this.T.coverSneakSpeed * dt,
             w.minT + pad, w.maxT - pad
           );
-          // He turns to face the way he is travelling along the wall, and the
-          // sided clip follows from which side the wall then sits on. Letting
-          // go leaves him facing that way, which is what makes "shimmy left,
-          // release, and he is in cover_idle_left" work.
-          this._coverDir = a.input > 0 ? 1 : -1;
-          this.facing = this._facingAlong(w, this._coverDir);
-          this._coverSideHeld = this._wallSide(this.facing, w);
+          // Which way he slides picks the LEAN, and nothing else. His facing
+          // never changes in cover, so there is no rotation to snap — the sided
+          // clips simply crossfade into each other.
+          const rx = -Math.cos(this.facing);
+          const rz = Math.sin(this.facing);
+          this._coverSideHeld = (a.tx * rx + a.tz * rz) * a.input >= 0 ? 'right' : 'left';
         }
         if (w.nx) { this.position.x = w.x; this.position.z = this._hangT; }
         else { this.position.x = this._hangT; this.position.z = w.z; }
         this.velocity.set(0, 0, 0);
 
         // ── sticky exit ────────────────────────────────────────────────────
-        // Cover is magnetic: sliding along it is the whole point, so sideways
-        // input must never release him and a brief wobble away must not either.
-        // Only a near-full pull directly away, HELD, lets go.
+        // Sideways input must never release him, and a brief wobble away must
+        // not either. Pulling away is movement ALONG the outward normal — away
+        // from the wall — which is also the way he is now facing.
         const out = this._moveWorld.x * w.nx + this._moveWorld.z * w.nz;
         if (out > this.T.coverExitPull) {
           this._coverPullT = (this._coverPullT || 0) + dt;
@@ -643,8 +614,13 @@ export class Character {
 
   _updateFacing(dt, intent) {
     if (this.state === 'slide') return;    // the slide owns its facing
-    // Hanging, climbing and cover all face the surface; nothing else may turn him.
-    if (this.state === 'hang' || this.state === 'climb' || this.state === 'cover') return;
+    if (this.state === 'hang' || this.state === 'climb') return;   // the ledge owns it
+    if (this.state === 'cover') {
+      // EASE, never assign. Setting facing directly is what made him teleport
+      // between rotations; a change of state has to be a turn you can watch.
+      this.facing = moveTowardAngle(this.facing, this._coverFacing, this.T.turnRate * dt);
+      return;
+    }
 
     let want = this.facing;
     let rate = this.T.turnRate;
