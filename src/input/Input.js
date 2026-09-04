@@ -19,6 +19,32 @@ import * as THREE from '../../vendor/three/three.module.js';
 import { Joystick } from './Joystick.js';
 import { clamp } from '../core/math.js';
 
+// ── LOOK IS A RATE, NOT A POSITION ─────────────────────────────────────────
+// How far the right stick is pushed sets how FAST the view turns, not where it
+// points. The previous model read the stick's absolute direction and only
+// engaged past 0.38 deflection, which made small pushes do nothing at all and
+// then snapped the whole view round the instant you reached the rim — dead,
+// dead, dead, lurch.
+//
+// A rate needs a much smaller deadzone (you want the first millimetre of travel
+// to do something) and a curve, so that the middle of the stick's range is fine
+// aim and the rim is a fast spin.
+const LOOK_DEADZONE = 0.06;
+// 0 = perfectly linear, 1 = fully cubic. Around 0.6 keeps slow turns
+// controllable without making the full-deflection spin feel sluggish.
+const LOOK_EXPO = 0.6;
+// Deflection past which he is considered to be aiming — it only has to clear
+// the noise floor now, because turning no longer waits for a threshold.
+const AIM_ENGAGE = 0.10;
+
+/** Signed turn rate, -1..1, from a raw stick axis. */
+function lookCurve(v) {
+  const m = Math.abs(v);
+  if (m <= LOOK_DEADZONE) return 0;
+  const t = (m - LOOK_DEADZONE) / (1 - LOOK_DEADZONE);
+  return Math.sign(v) * t * (LOOK_EXPO * t * t + (1 - LOOK_EXPO));
+}
+
 export class Input {
   constructor(dom, cam) {
     this.cam = cam;
@@ -146,23 +172,25 @@ export class Input {
     this._screenToWorld(sx, sy, this.move);
     this.moveMag = mag;
 
-    // ── aim / shoot ─────────────────────────────────────────────────────
-    // The right stick's DIRECTION is the aim. Any real deflection turns him;
-    // past the trigger zone (Joystick's SHOOT_ZONE) it also shoots.
+    // ── look / aim / shoot ──────────────────────────────────────────────
+    // The right stick's horizontal deflection is a TURN RATE. The camera
+    // integrates it, and the character faces wherever the camera ends up, so a
+    // gentle push is a slow sweep and a hard one is a fast spin — with every
+    // speed in between actually reachable.
     const rmag = this.right.mag;
-    this.aiming = rmag >= Joystick.camDeadzone;
+    this.aiming = rmag >= AIM_ENGAGE;
     this.shooting = this.right.shootActive || this._mouseDown;
-    if (this.aiming) {
-      this.aimYaw = this.screenToWorldAngle(this.right.angle);
-    }
 
-    // ── camera ──────────────────────────────────────────────────────────
-    // The left stick never pans; only its swipe-through does nothing here, so
-    // the camera's manual input is the mouse plus Q/E on desktop.
+    // A flick mutes the stick for a beat, so a melee swipe never also whips the
+    // view — the same guard the swipe camera used to rely on.
+    const turn = this.right.muted ? 0 : lookCurve(this.right.x);
+
     this.lookDx = this._mouseDx;
     this._mouseDx = 0;
     void leftSwipe;
-    this.lookX = (this.keys.has('KeyE') ? 1 : 0) - (this.keys.has('KeyQ') ? 1 : 0);
+    this.lookX = turn
+      + (this.keys.has('KeyE') ? 1 : 0)
+      - (this.keys.has('KeyQ') ? 1 : 0);
   }
 
   /** Layout the parked sticks for the current screen. Call on resize. */

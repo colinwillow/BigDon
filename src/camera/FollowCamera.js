@@ -29,7 +29,7 @@ export const CAM = {
   // a pitch axis nobody asks for.
   pitch: 0.16,           // ~9 degrees — the world ahead, not the ground
 
-  yawRate: 2.9,          // radians/sec at full stick (gamepad / Q,E)
+  yawRate: 3.4,          // radians/sec at full right-stick deflection
   swipeSens: 0.0075,     // radians per swiped pixel (touch / mouse)
   yawHL: 0.10,
   yawHLFree: 0.03,       // while the player is actively turning

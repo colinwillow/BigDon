@@ -154,15 +154,17 @@ function frame(now) {
     moveX: input.move.x * input.moveMag,
     moveZ: input.move.z * input.moveMag,
     aiming: input.aiming,
-    aimYaw: input.aimYaw,
+    // He faces where the CAMERA is looking, not where the stick points. The
+    // stick now drives the camera's turn rate, so taking his facing from the
+    // camera makes him turn at exactly that rate too, instead of snapping to a
+    // stick direction the camera then had to chase.
+    aimYaw: follow.yaw + Math.PI,
   });
   character.anim.update(dt);
 
-  // While the aim stick is held, pull the camera around behind the aim.
-  if (input.aiming) {
-    follow.attract(character.aimYaw);
-    follow.aimHold();
-  }
+  // The stick steers the camera directly now, so there is nothing to attract
+  // it toward — attract() existed to chase an absolute stick direction.
+  if (input.aiming) follow.aimHold();
   follow.update(dt, character, { x: input.lookX, dxPx: input.lookDx });
 
   // Keep the shadow camera on the character, so its 2048 texels stay where
