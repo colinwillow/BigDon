@@ -42,8 +42,8 @@ Two consequences worth knowing:
 
 ```sh
 npm start            # static server on :8123
-node tests/locomotion.mjs   # 51 controller checks, no browser needed
-node tests/collision.mjs    # 16 collision checks, no browser needed
+node tests/locomotion.mjs   # 85 controller checks, no browser needed
+node tests/collision.mjs    # 53 collision checks, no browser needed
 node tests/smoke.mjs        # boots the real game in Chromium
 node tests/gestures.mjs     # drives the sticks with real touch events
 npm test                    # all three
@@ -86,9 +86,9 @@ already stylised, so shading them again just fought them. The look is Robits':
 
 * the character is lit by his own paint, so his colours read at full saturation.
   `EMISSIVE_SCALE` in `render/materials.js` multiplies whatever the model ships;
-  at big_donny's authored 0.6 his hair washes to near-white, so it runs at 0.25
-  of that. Set it to 0 to kill self-illumination entirely — the form reads best
-  there, at the cost of vibrancy.
+  at big_donny's authored 0.6 his hair washes to near-white, so it runs at half
+  of that (about 0.3 effective). Set it to 0 to kill self-illumination entirely
+  — the form reads best there, at the cost of vibrancy.
   `big_donny.glb` ships this itself — an `emissiveTexture` plus an
   `emissiveFactor` of 0.6 — and `flatten()` LEAVES A MODEL'S OWN EMISSIVE ALONE.
   It only feeds the base colour map back in as an emissive map (at `EMISSIVE`,
@@ -276,6 +276,45 @@ a ledge should be the level's fault, not the player's.
   against it to hanging off its top.
 * **Double jump**: one air jump, playing `jump_flip`, weaker than the first so
   the first jump stays a decision.
+* **The jump is a press and a release, not a tap.** The thumb going down
+  crouches him; the thumb coming up launches him. A tap is the same motion too
+  quick to see much of, which is where the jump's anticipation comes from — and
+  is why there is no stand-to-jump clip and none is needed.
+* **Held, the crouch is a slide, and it feeds a LONG JUMP** — the Mario move.
+  Momentum carries and bleeds off against `crouchFriction`; release above
+  `longJumpAt` and the launch goes flatter (`longJumpSpeed`, below the normal
+  `jumpSpeed`) and much faster along the ground (`longJumpBoost`). Boosting the
+  ground speed without lowering the launch just makes a longer normal jump.
+
+### The jump thumb is also the camera
+
+That collision is the whole difficulty of press-to-crouch, and it is resolved
+in `Input.js` by two SEPARATE guards — one on time, one on deflection:
+
+* `CROUCH_ARM_MS` (70ms) — the thumb must be down AND PARKED for a beat,
+  measured off the stick's stillness clock (`Joystick.stillMs`), not off the
+  press. A pan's thumb is moving, so that clock keeps resetting and the crouch
+  never arms at all. Timing it from the press instead worked at 60fps and
+  blipped a crouch on the way out at 24, because a slow frame lets the window
+  elapse before the deflection guard has seen anything move.
+* `CROUCH_MAX_PUSH` (0.35) — any deflection past this, at any time, and the
+  touch was a look or an aim: the crouch is abandoned and the release does not
+  jump. Deliberately below the stick's own `TAP_MAX_PUSH`.
+
+Three things there are easy to get wrong:
+
+* **Whether the release jumps depends on whether the TOUCH was a crouch
+  candidate, not on whether he actually crouched.** Pressing in mid-air never
+  crouches but must still fire the double jump.
+* **The release re-checks `lastGesture` and `peakPush`.** A flick can snap out
+  and let go inside one frame, so `sample()` may never have seen the deflection
+  that should have cancelled the crouch — the same reason the flick peak is
+  latched at all.
+* **The flick mute only DELAYS the arm; it must not kill the touch.** The flick
+  itself already aborts the crouch. Treating the leftover 260ms mute from a
+  previous melee as an abort meant the next press could not jump at all for a
+  quarter of a second after every swipe. `tests/gestures.mjs` pins the tap, the
+  hold and the pan.
 
 Two clip-level rules learned the hard way:
 

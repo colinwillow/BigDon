@@ -39,12 +39,12 @@ export const EMISSIVE = 0.92;
  * shaded material and starts reading as a lamp. Scaling it down keeps the
  * saturation the emissive is there for without flattening the form.
  *
- * At the shipped 0.6 his hair washes to near-white; 0.25 of it (about 0.15
+ * At the shipped 0.6 his hair washes to near-white; half of it (about 0.3
  * effective) keeps the saturation without losing the shading. Set this to 0 to
  * disable self-illumination entirely and let the lights do all the work — the
  * form reads best there, at the cost of some vibrancy.
  */
-export const EMISSIVE_SCALE = 0.25;
+export const EMISSIVE_SCALE = 0.5;
 
 /**
  * Convert everything under `root` to the flat, self-lit look.

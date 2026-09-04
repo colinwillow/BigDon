@@ -359,6 +359,102 @@ console.log('\ndouble jump');
   ok('landing rearms the double jump', c.velocity.y > 0, `vy=${c.velocity.y.toFixed(2)}`);
 }
 
+console.log('\ncrouch and the long jump');
+{
+  // Standing crouch, then release: an ordinary jump. The crouch itself must
+  // not be a stop — it keeps whatever momentum it entered with.
+  const c = makeChar();
+  ok('crouch only starts on the ground', c.startCrouch() === true);
+  ok('and puts him in the crouch state', c.state === 'crouch');
+  ok('crouching again is a no-op', c.startCrouch() === false);
+  c.releaseCrouch();
+  ok('releasing a standing crouch is a plain jump',
+    near(c.velocity.y, TUNING.jumpSpeed, 1e-6), `vy=${c.velocity.y.toFixed(2)}`);
+  ok('and it leaves the crouch', c.state === 'air');
+}
+{
+  // The slide. Enter at speed and the momentum carries, bleeding off against
+  // crouchFriction — a check that only asserted "he slows down" would pass
+  // with him stopping dead, so pin the DISTANCE travelled too.
+  const c = makeChar();
+  run(c, 2.0, { moveZ: -1 });                 // up to run speed
+  const entrySpeed = c.speed;
+  const z0 = c.position.z;
+  c.startCrouch();
+  run(c, 0.25, {});                           // no stick — pure slide
+  ok('a crouch entered at speed keeps moving', c.position.z < z0 - 1.0,
+    `travelled ${(z0 - c.position.z).toFixed(2)}m`);
+  ok('but is bleeding speed off', c.speed < entrySpeed - 1,
+    `${entrySpeed.toFixed(2)} -> ${c.speed.toFixed(2)}`);
+  ok('in the direction he was already going', c.position.x === 0);
+  // ...and it does eventually stop, rather than sliding forever.
+  run(c, 3.0, {});
+  ok('a held crouch slides to a halt', c.speed < 0.05, `speed=${c.speed.toFixed(3)}`);
+  ok('and he is still crouching', c.state === 'crouch');
+  c.releaseCrouch();
+  ok('a crouch that has stopped jumps normally, not long',
+    near(c.velocity.y, TUNING.jumpSpeed, 1e-6), `vy=${c.velocity.y.toFixed(2)}`);
+}
+{
+  // The Mario move: release while still sliding fast and the jump goes FLAT
+  // and FAR rather than high. Both halves matter — boosting the ground speed
+  // without lowering the launch just makes a longer normal jump.
+  const long = makeChar();
+  run(long, 2.0, { moveZ: -1 });
+  long.startCrouch();
+  run(long, 1 / 60, {});
+  ok('still above the long-jump threshold', long.speed >= TUNING.longJumpAt,
+    `speed=${long.speed.toFixed(2)}`);
+  const groundSpeed = long.speed;
+  long.releaseCrouch();
+  ok('a long jump launches lower', long.velocity.y < TUNING.jumpSpeed,
+    `vy=${long.velocity.y.toFixed(2)} vs ${TUNING.jumpSpeed}`);
+  ok('and much faster along the ground', long.speed > groundSpeed * 1.4,
+    `${groundSpeed.toFixed(2)} -> ${long.speed.toFixed(2)}`);
+
+  // Distance, measured against the same jump taken from a standstill-ish
+  // crouch: the whole point is that it goes further.
+  const lz = long.position.z;
+  run(long, 3.0, {});
+  const longDist = lz - long.position.z;
+
+  const normal = makeChar();
+  run(normal, 2.0, { moveZ: -1 });
+  normal.requestJump();
+  const nz = normal.position.z;
+  run(normal, 3.0, {});
+  const normalDist = nz - normal.position.z;
+  ok('a long jump covers more ground than a running jump',
+    longDist > normalDist, `${longDist.toFixed(2)}m vs ${normalDist.toFixed(2)}m`);
+}
+{
+  // Guards. A crouch must not open a hole in the other states, and a press
+  // that gets abandoned must leave him exactly as he was.
+  const c = makeChar();
+  c.requestJump();
+  run(c, 0.2, {});
+  ok('crouch does not start in mid-air', c.startCrouch() === false);
+  ok('and releasing one that never started does nothing',
+    c.releaseCrouch() === false);
+  run(c, 2.0, {});
+
+  const d = makeChar();
+  run(d, 2.0, { moveZ: -1 });
+  d.startCrouch();
+  run(d, 0.1, {});
+  d.cancelCrouch();
+  ok('cancelling a crouch returns him to the ground state', d.state === 'ground');
+  ok('and he keeps running from where he was', d.speed > 1,
+    `speed=${d.speed.toFixed(2)}`);
+  run(d, 1.0, { moveZ: -1 });
+  ok('back up to speed afterwards', d.speed > TUNING.runSpeed * 0.9,
+    `speed=${d.speed.toFixed(2)}`);
+
+  const e = makeChar();
+  e.requestSlide(0);
+  ok('a slide tackle cannot be crouch-cancelled', e.startCrouch() === false);
+}
+
 console.log('\nloop seams');
 {
   // Every cycle in this pack ends on a byte-identical copy of its first frame,

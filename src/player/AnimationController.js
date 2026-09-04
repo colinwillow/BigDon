@@ -298,6 +298,11 @@ export class AnimationController {
     if (fall) fall.setLoop(THREE.LoopRepeat, Infinity);
   }
 
+  /** Held crouch. One clip; the blend crossfade covers going down into it. */
+  crouch() {
+    this._want(CLIPS.crouch, 1);
+  }
+
   /** Airborne pose. One clip, held. */
   air() {
     this._want(CLIPS.fall, 1);

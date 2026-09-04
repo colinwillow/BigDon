@@ -184,6 +184,26 @@ export class Joystick {
    * reason a flick and a camera drag can share one thumb.
    */
   get muted() { return performance.now() < this._muteUntil; }
+
+  /**
+   * Furthest this touch has been pushed, as a fraction of the radius. Survives
+   * the release (it is only reset on the next press), so a verb decided AT the
+   * release can ask "was this thumb ever pushed out?" without depending on a
+   * frame having been polled while it was — a flick can peak and return
+   * between two frames, which is the same reason the flick peak is latched.
+   */
+  get peakPush() { return this._tapPeak; }
+
+  /**
+   * How long the thumb has been parked, in ms — measured from the press, and
+   * reset by every above-slop move. 0 when nothing is touching. This is the
+   * same stillness clock the aim-hold uses, and it is judged per EVENT rather
+   * than per second so that a janky frame never reads as a still thumb.
+   */
+  get stillMs() {
+    if (this.touchId === null) return 0;
+    return performance.now() - this._stillSince;
+  }
   /**
    * True once the thumb has been held out past the deadzone long enough that
    * this is definitely a drag and not the wind-up of a flick.

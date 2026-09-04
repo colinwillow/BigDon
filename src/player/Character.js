@@ -50,7 +50,7 @@ export class Character {
     this.aiming = false;
 
     this.grounded = true;
-    this.state = 'ground';       // ground | air | slide | melee | land
+    this.state = 'ground';       // ground | air | crouch | slide | melee | land
     this._stateT = 0;
     this._oneShotEnds = 0;
 
@@ -102,6 +102,53 @@ export class Character {
   /** Right-stick tap. Buffered, so pressing just before landing still fires. */
   requestJump() {
     this._jumpBuffered = this.T.jumpBuffer;
+  }
+
+  /**
+   * Press the jump thumb: he crouches. Held while running, that is a slide —
+   * momentum carries and bleeds off against crouchFriction — and releasing it
+   * launches him. See releaseCrouch.
+   */
+  startCrouch() {
+    if (!this.grounded) return false;
+    if (this.state === 'slide' || this.state === 'melee'
+        || this.state === 'hang' || this.state === 'climb'
+        || this.state === 'cover' || this.state === 'crouch') return false;
+    this._enter('crouch');
+    return true;
+  }
+
+  /**
+   * Release the jump thumb: he jumps out of the crouch.
+   *
+   * Above longJumpAt he is still sliding with real speed, and that becomes a
+   * LONG jump — flatter, faster and much further — which is what makes holding
+   * the button through a run worth doing. Below it, an ordinary jump, so a
+   * plain tap is just a jump with a crouch too brief to notice.
+   */
+  releaseCrouch() {
+    if (this.state !== 'crouch') return false;
+    const long = this.speed >= this.T.longJumpAt;
+    this.velocity.y = long ? this.T.longJumpSpeed : this.T.jumpSpeed;
+    if (long) {
+      this.velocity.x *= this.T.longJumpBoost;
+      this.velocity.z *= this.T.longJumpBoost;
+      this.speed = Math.hypot(this.velocity.x, this.velocity.z);
+    }
+    this.grounded = false;
+    this._coyote = 0;
+    this._airJumps = 0;
+    this.lastJumpWasLong = long;
+    this.anim.endOneShot();
+    this.anim.enterAir();
+    this._enter('air');
+    return true;
+  }
+
+  /** Abandon the crouch without jumping — the press turned out to be an aim. */
+  cancelCrouch() {
+    if (this.state !== 'crouch') return;
+    this._enter('ground');
   }
 
   /** Left-stick flick: the slide tackle, in the flicked direction. */
@@ -453,6 +500,27 @@ export class Character {
         }
         break;
       }
+      case 'crouch': {
+        // Momentum carries and bleeds off — this is a slide, not a stop. He can
+        // still aim it a little, which is what lets you line a long jump up.
+        const sp = Math.hypot(this.velocity.x, this.velocity.z);
+        if (sp > 1e-4) {
+          const drop = Math.min(sp, this.T.crouchFriction * dt);
+          const k = (sp - drop) / sp;
+          this.velocity.x *= k;
+          this.velocity.z *= k;
+        }
+        if (intent > 0.05 && sp > 0.2) {
+          const want = Math.atan2(this._moveWorld.x, this._moveWorld.z);
+          const turned = moveTowardAngle(
+            Math.atan2(this.velocity.x, this.velocity.z), want, this.T.crouchSteer * dt
+          );
+          const keep = Math.hypot(this.velocity.x, this.velocity.z);
+          this.velocity.x = Math.sin(turned) * keep;
+          this.velocity.z = Math.cos(turned) * keep;
+        }
+        break;
+      }
       case 'air':
         this._accelerate(dt, this._moveWorld, wantSpeed, this.T.airControl);
         // The flip is a one-shot over the top of the air pose; end it when the
@@ -468,7 +536,8 @@ export class Character {
     }
 
     // ── jump ─────────────────────────────────────────────────────────────
-    const busy = this.state === 'slide' || this.state === 'melee' || this.state === 'climb';
+    const busy = this.state === 'slide' || this.state === 'melee'
+      || this.state === 'climb' || this.state === 'crouch';
     const canGroundJump = (this.grounded || this._coyote > 0) && !busy;
     // The second jump is available in mid-air once, and plays the flip.
     const canAirJump = !this.grounded && !busy && this._airJumps < 1
@@ -579,7 +648,13 @@ export class Character {
     } else {
       this.grounded = false;
       this._coyote = Math.max(0, this._coyote - dt);
-      if (this.state === 'ground') { this.anim.enterAir(); this._enter('air'); }
+      // A crouch that walks off an edge becomes a fall, not a crouch in
+      // mid-air — and releasing the thumb then falls through to the ordinary
+      // coyote/air jump rather than a long jump off nothing.
+      if (this.state === 'ground' || this.state === 'crouch') {
+        this.anim.enterAir();
+        this._enter('air');
+      }
     }
 
     this.speed = Math.hypot(this.velocity.x, this.velocity.z);
@@ -614,6 +689,15 @@ export class Character {
 
   _updateFacing(dt, intent) {
     if (this.state === 'slide') return;    // the slide owns its facing
+    if (this.state === 'crouch') {
+      // He faces the way he is sliding, so the long jump goes where he points.
+      if (this.speed > 0.2) {
+        this.facing = moveTowardAngle(
+          this.facing, Math.atan2(this.velocity.x, this.velocity.z), this.T.turnRate * dt
+        );
+      }
+      return;
+    }
     if (this.state === 'hang' || this.state === 'climb') return;   // the ledge owns it
     if (this.state === 'cover') {
       // EASE, never assign. Setting facing directly is what made him teleport
@@ -657,6 +741,10 @@ export class Character {
       // blend underneath is the right one when the overlay fades out.
       if (!this.grounded) a.air();
       else a.locomotion(this.speed, this._localMoveAngle(), this.speed * dt);
+      return;
+    }
+    if (this.state === 'crouch') {
+      a.crouch();
       return;
     }
     if (!this.grounded) {

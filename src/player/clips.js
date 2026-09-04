@@ -64,6 +64,10 @@ export const CLIPS = {
   coverOutR: 'cover_right_to_stand',
 
   // ── crouch (mapped, state machine still to come) ─────────────────────────
+  // The held crouch pose. `crouch` is a 6.7s loop that is already crouched at
+  // frame 0, so the blend crossfade covers going down into it — there is no
+  // separate stand-to-crouch take and none is needed.
+  crouch: 'crouch',
   crouchIdle: 'crouch_idle',
   crouchStrafeL: 'crouch_strafe_slow_left',
   crouchStrafeR: 'crouch_strafe_slow_right',
@@ -241,6 +245,20 @@ export const TUNING = {
   coverEnterSpeed: 6.5,   // ...and you can be moving at a fair clip doing it
   coverExitPull: 0.80,    // pulling away must be nearly full deflection
   coverExitHold: 0.22,    // ...and held this long, so a wobble never releases
+
+  // ── crouch, and the long jump ────────────────────────────────────────────
+  // Press the jump thumb and he crouches; release and he jumps. A tap is
+  // therefore a very fast crouch-and-go, and a HOLD while running is a slide
+  // whose momentum feeds a long jump — the Mario move.
+  crouchFriction: 11.0,     // m/s^2 bled off while sliding; lower = longer slide
+  crouchSteer: 3.0,         // rad/sec — he can still aim the slide, barely
+  // (the thumb thresholds that decide a press IS a crouch live with the stick,
+  //  in Input.js — CROUCH_ARM_MS and CROUCH_MAX_PUSH.)
+  // Release above this speed and the jump becomes a LONG jump: flatter, faster,
+  // and much further. Below it, an ordinary jump.
+  longJumpAt: 4.5,
+  longJumpSpeed: 11.0,      // less up...
+  longJumpBoost: 1.6,       // ...and considerably more along the ground
 
   // ── slide tackle (left-stick flick) ──────────────────────────────────────
   slideSpeed: 17.0,

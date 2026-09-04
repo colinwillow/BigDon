@@ -102,7 +102,15 @@ async function boot() {
     ringRight: document.getElementById('ring-right'),
   }, follow);
 
-  input.onJump = () => character.requestJump();
+  // Press the jump thumb and he crouches; release and he jumps out of it. A
+  // crouch carrying real speed launches long instead of high — releaseCrouch
+  // decides which — and anything that was not a crouch (mid-air, or a press
+  // that never armed) falls through to the ordinary jump.
+  input.onCrouch = () => character.startCrouch();
+  input.onCrouchCancel = () => character.cancelCrouch();
+  input.onJump = () => {
+    if (!character.releaseCrouch()) character.requestJump();
+  };
   // Right-stick flick: a slide tackle if he is already running, a strike
   // otherwise. Flicking the LEFT stick while also steering with it is awkward,
   // so the slide lives on the free thumb — and at speed the tackle is the move
