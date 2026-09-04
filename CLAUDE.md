@@ -97,10 +97,8 @@ too washes every block to the same flat white and the character stops popping.
 
 ## The model
 
-`models/handyman_game.glb` is the playable character (set in `src/main.js`).
-`donny_game.glb` and `big_donny.glb` are kept in the repo but not loaded —
-big_donny is the intended new skin and is waiting on a re-export that includes
-its animation data.
+`models/big_donny.glb` is the playable character (set in `src/main.js`).
+`handyman_game.glb` and `donny_game.glb` are kept in the repo but not loaded.
 
 The loader handles Draco compression (`big_donny.glb` lists
 `KHR_draco_mesh_compression` in `extensionsRequired`, and without the decoder the
@@ -139,10 +137,12 @@ often enough to read as a hitch.
 
 ### A clip list can lie
 
-`big_donny.glb` shipped with all 54 clip names, correct durations, and no
+`big_donny.glb` first shipped with all 54 clip names, correct durations, and no
 keyframes — every bone but the head was a two-key constant. The actions played,
 reported sensible weights, and the character stood in his bind pose. Every check
-short of looking at the screen passed.
+short of looking at the screen passed. The re-export fixed it, but two clips
+(`kick_spinning_hurricane_left` / `_right`) are still empty, and were empty in
+handyman too — so the combo finisher is `kick_spin` instead.
 
 `_findFlatClips` now catches it at load and warns: a clip that is nearly all
 two-key tracks is holding one pose, and real locomotion runs 20-50 animated

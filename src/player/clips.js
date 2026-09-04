@@ -101,7 +101,12 @@ export const MELEE_COMBO = [
   'punch_hook',
   'punch_elbow',
   'kick_roundhouse',
-  'kick_spinning_hurricane',
+  // The finisher was kick_spinning_hurricane, which is EMPTY: it carries two
+  // animated tracks in both models, so the last hit of every combo held the
+  // bind pose. `_findFlatClips` reports it at load. kick_spin is the same idea
+  // and actually has data (23 tracks). Put the hurricane back if it is ever
+  // re-exported with keyframes.
+  'kick_spin',
 ];
 
 /** Everything else that can be thrown, for variety and for later use. */

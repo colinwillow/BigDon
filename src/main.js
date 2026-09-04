@@ -10,11 +10,7 @@ import { Input } from './input/Input.js';
 import { TUNING } from './player/clips.js';
 
 /** The playable character. */
-// big_donny.glb is the new skin, but its clips exported with no keyframes —
-// every bone but the head is a two-key constant, so he holds his bind pose. Put
-// it back here once it has been re-exported with the animation baked; the
-// loader already handles its Draco compression and duplicate actions.
-const MODEL = 'models/handyman_game.glb';
+const MODEL = 'models/big_donny.glb';
 import { clamp } from './core/math.js';
 
 const canvas = document.getElementById('game');
