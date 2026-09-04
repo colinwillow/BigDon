@@ -16,6 +16,7 @@
 
 import * as THREE from '../../vendor/three/three.module.js';
 import { GLTFLoader } from '../../vendor/three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from '../../vendor/three/addons/loaders/DRACOLoader.js';
 import { flatten } from '../render/materials.js';
 import { measureYawOffset } from './rig.js';
 
@@ -23,6 +24,14 @@ export { normaliseHeight, skinnedBounds } from './rig.js';
 
 export async function loadCharacter(url, opts = {}) {
   const loader = new GLTFLoader();
+  // big_donny.glb lists KHR_draco_mesh_compression in extensionsRequired, so
+  // without this the load fails outright with "No DRACOLoader instance
+  // provided" and the boot screen just sits there. The decoder is vendored
+  // alongside three; the gltf/ build is the geometry-only one, a quarter the
+  // size of the full Draco decoder.
+  const draco = new DRACOLoader();
+  draco.setDecoderPath('vendor/three/addons/libs/draco/gltf/');
+  loader.setDRACOLoader(draco);
   const gltf = await loader.loadAsync(url);
   const scene = gltf.scene;
 
@@ -31,6 +40,19 @@ export async function loadCharacter(url, opts = {}) {
   // downstream has to know about the export convention.
   for (const clip of gltf.animations) {
     clip.name = clip.name.replace(/^Armature\|/, '').replace(/\|Layer0$/, '');
+  }
+
+  // Drop Blender's `.001` duplicates. Re-importing an animation set onto a new
+  // rig leaves a second copy of every action suffixed `.001`, identical in
+  // length and channel count to the original — big_donny ships 110 clips that
+  // are really 54. They are harmless but they double the load-time work and
+  // make the clip list unreadable when you are hunting for a name.
+  const dupes = gltf.animations.filter((c) => /\.\d{3}$/.test(c.name));
+  if (dupes.length) {
+    const kept = new Set(gltf.animations.map((c) => c.name));
+    gltf.animations = gltf.animations.filter(
+      (c) => !(/\.\d{3}$/.test(c.name) && kept.has(c.name.replace(/\.\d{3}$/, '')))
+    );
   }
 
   // NOTE: the character is NOT scaled here — see normaliseHeight() below, which
@@ -54,6 +76,9 @@ export async function loadCharacter(url, opts = {}) {
   const skinned = [];
   scene.traverse((o) => { if (o.isSkinnedMesh) skinned.push(o); });
   flatten(root, { emissive: opts.emissive });
+
+  // The decoder spins up a worker; nothing else needs it once the mesh is in.
+  draco.dispose();
 
   return { root, clips: gltf.animations, skinned, yawOffset };
 }

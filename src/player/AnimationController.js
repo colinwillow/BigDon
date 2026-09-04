@@ -76,7 +76,32 @@ export class AnimationController {
     this._oneShotWeight = 0;
 
     this.missing = [];
+    /** Clips that carry no real motion. See _findFlatClips. */
+    this.flat = [];
     this._warmup();
+    this._findFlatClips();
+  }
+
+  /**
+   * Flag clips that have names and durations but no actual keyframes.
+   *
+   * A re-export can drop the motion while keeping everything else: the clip
+   * list looks perfect, the durations are right, the actions play and report
+   * sensible weights — and the character stands in his bind pose the whole
+   * time. It reads as "the animation system is broken" rather than "this file
+   * has no animation in it", and every runtime check short of looking at the
+   * screen passes.
+   *
+   * A track with two keys is a constant, so a clip that is nearly all
+   * two-key tracks is holding a single pose. Real locomotion runs 20-50
+   * animated tracks; anything with one or two has lost its data.
+   */
+  _findFlatClips() {
+    for (const [name, clip] of this.clips) {
+      if (clip.duration < 0.1) continue;          // t-pose stubs and the like
+      const moving = clip.tracks.filter((t) => t.times.length > 2).length;
+      if (moving <= 2 && clip.tracks.length > 20) this.flat.push(name);
+    }
   }
 
   /**

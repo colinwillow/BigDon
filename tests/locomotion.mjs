@@ -398,6 +398,33 @@ console.log('\nloop seams');
     `duration=${cc.clips.get('tiny').duration}`);
 }
 
+console.log('\nempty clips');
+{
+  // A re-export can drop the motion while keeping the clip names and lengths:
+  // the list looks perfect, actions play and report sensible weights, and the
+  // character stands in his bind pose the whole time. Every runtime check short
+  // of looking at the screen passes, so this one looks at the keyframes.
+  const step = 1 / 24;
+  const times = [0, step, step * 2, step * 3];
+  const track = (name, values) =>
+    new THREE.QuaternionKeyframeTrack(name + '.quaternion', times, values);
+  const moving = (name) => track(name, [0,0,0,1, 0,0.1,0,0.99, 0,0.2,0,0.98, 0,0,0,1]);
+  const flatT = (name) =>
+    new THREE.QuaternionKeyframeTrack(name + '.quaternion', [0, 1], [0,0,0,1, 0,0,0,1]);
+
+  const names = Array.from({ length: 30 }, (_, i) => 'bone' + i);
+  const dead = new THREE.AnimationClip('dead', 1, names.map(flatT));
+  const alive = new THREE.AnimationClip('alive', 1,
+    names.map((n, i) => (i < 10 ? moving(n) : flatT(n))));
+
+  const model = new THREE.Object3D();
+  model.add(new THREE.Object3D());
+  const a = new Character(model, [dead, alive]).anim;
+
+  ok('a clip with no keyframes is flagged', a.flat.includes('dead'), a.flat.join(','));
+  ok('a clip with real motion is not flagged', !a.flat.includes('alive'), a.flat.join(','));
+}
+
 console.log('\nmodel orientation');
 {
   // The controller checks above all use a bare Object3D, so NONE of them can

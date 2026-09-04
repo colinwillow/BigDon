@@ -10,6 +10,10 @@ import { Input } from './input/Input.js';
 import { TUNING } from './player/clips.js';
 
 /** The playable character. */
+// big_donny.glb is the new skin, but its clips exported with no keyframes —
+// every bone but the head is a two-key constant, so he holds his bind pose. Put
+// it back here once it has been re-exported with the animation baked; the
+// loader already handles its Draco compression and duplicate actions.
 const MODEL = 'models/handyman_game.glb';
 import { clamp } from './core/math.js';
 
@@ -81,6 +85,16 @@ async function boot() {
 
   if (character.anim.missing.length) {
     console.warn('clips.js names tracks that are not in the GLB:', character.anim.missing);
+  }
+  // A model whose clips have no keyframes stands in its bind pose while
+  // everything else looks fine, so say so loudly rather than letting it look
+  // like a bug in the blend tree.
+  if (character.anim.flat.length) {
+    console.warn(
+      `[bigdon] ${character.anim.flat.length} clip(s) in ${MODEL} have no animation data ` +
+      `— they will hold the bind pose. Re-export with the animation baked. ` +
+      `First few: ${character.anim.flat.slice(0, 5).join(', ')}`
+    );
   }
 
   input = new Input({

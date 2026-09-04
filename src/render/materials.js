@@ -43,6 +43,7 @@ export function flatten(root, opts = {}) {
     metalness = 0.0,
     castShadow = true,
     receiveShadow = true,
+    opaque = true,
   } = opts;
 
   root.traverse((o) => {
@@ -59,6 +60,30 @@ export function flatten(root, opts = {}) {
       if ('metalness' in m) m.metalness = metalness;
       if ('roughness' in m) m.roughness = roughness;
       if ('envMapIntensity' in m) m.envMapIntensity = 0;
+
+      // ── kill every other way a surface can catch the light ──────────────
+      // Exporters happily attach KHR_materials_specular / clearcoat / sheen,
+      // and three turns those into a MeshPhysicalMaterial that still glints
+      // even at roughness 1. big_donny ships specularColorFactor [2,2,2],
+      // which is a deliberate specular BOOST — exactly the wet-plastic sheen
+      // this look exists to avoid.
+      if ('specularIntensity' in m) m.specularIntensity = 0;
+      if (m.specularColor && m.specularColor.setRGB) m.specularColor.setRGB(0, 0, 0);
+      if ('clearcoat' in m) m.clearcoat = 0;
+      if ('sheen' in m) m.sheen = 0;
+      if ('iridescence' in m) m.iridescence = 0;
+
+      // ── opaque, unless the art really needs blending ────────────────────
+      // A character exported with alphaMode BLEND depth-sorts against itself:
+      // an arm draws over the chest that should occlude it, and it reads as
+      // the model glitching. big_donny's texture is fully opaque (alpha is 255
+      // everywhere), so the BLEND is an export artefact. Pass opaque:false if a
+      // model ever genuinely needs alpha — hair cards, foliage.
+      if (opaque && m.transparent) {
+        m.transparent = false;
+        m.depthWrite = true;
+        m.alphaTest = 0;
+      }
       if ('emissive' in m) {
         if (m.map) {
           // Self-illuminate from the texture. White emissive + the map means

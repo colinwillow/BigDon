@@ -98,7 +98,15 @@ too washes every block to the same flat white and the character stops popping.
 ## The model
 
 `models/handyman_game.glb` is the playable character (set in `src/main.js`).
-`donny_game.glb` is the previous one, kept in the repo but not loaded.
+`donny_game.glb` and `big_donny.glb` are kept in the repo but not loaded —
+big_donny is the intended new skin and is waiting on a re-export that includes
+its animation data.
+
+The loader handles Draco compression (`big_donny.glb` lists
+`KHR_draco_mesh_compression` in `extensionsRequired`, and without the decoder the
+load fails outright), and drops Blender's `.001` duplicate actions — re-importing
+an animation set leaves a second copy of every clip, so big_donny ships 110 that
+are really 54.
 
 54 clips, Mixamo rig (`mixamorig_*`, 65 joints), all IN-PLACE — no track
 translates the character, so code owns movement and the clip owns the pose.
@@ -128,6 +136,33 @@ start. Re-rolling the side at random instead throws the same hand twice in a row
 often enough to read as a hitch.
 
 
+
+### A clip list can lie
+
+`big_donny.glb` shipped with all 54 clip names, correct durations, and no
+keyframes — every bone but the head was a two-key constant. The actions played,
+reported sensible weights, and the character stood in his bind pose. Every check
+short of looking at the screen passed.
+
+`_findFlatClips` now catches it at load and warns: a clip that is nearly all
+two-key tracks is holding one pose, and real locomotion runs 20-50 animated
+tracks. When a new model looks frozen, check the console before the blend tree.
+
+To compare two exports directly, count animated tracks per clip:
+
+```py
+sum(1 for ch in anim['channels']
+    if accessors[anim['samplers'][ch['sampler']]['input']]['count'] > 2)
+```
+
+### Rigs are not interchangeable
+
+handyman and big_donny share 57 `mixamorig_*` bone names, which makes clip reuse
+look trivial. It is not: their rest translations differ on 46 of those 57 bones,
+and handyman bakes a -90 degree X rotation into `mixamorig_Hips` while big_donny
+moves it to a new `root` bone above the hips. Animation channels store ABSOLUTE
+local transforms, so replaying one rig's tracks on the other double-rotates him.
+Matching bone names are not a matching rig.
 
 ### Two traps these GLBs set
 
