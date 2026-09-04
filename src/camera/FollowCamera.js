@@ -128,11 +128,17 @@ export class FollowCamera {
     // Two inputs: a rate from held sticks (gamepad, Q/E) and swiped pixels
     // from touch/mouse. Horizontal only; look.y is ignored — see CAM.pitch.
     const dxPx = look.dxPx || 0;
-    const turning = Math.abs(look.x) > 0.05 || Math.abs(dxPx) > 0.5;
-    if (turning) {
-      this.targetYaw -= look.x * CAM.yawRate * dt + dxPx * CAM.swipeSens;
-      this._recentring = false;    // any manual input cancels a recentre
-    }
+    // Apply the rate WHENEVER there is one. This used to be gated behind
+    // `> 0.05`, which stacked a second deadzone on top of the stick's own and
+    // threw away exactly the gentle pushes the curve exists to make usable — a
+    // quarter-deflection nudge produced a look value of 0.036 and moved the
+    // camera not at all.
+    if (look.x !== 0) this.targetYaw -= look.x * CAM.yawRate * dt;
+    if (dxPx !== 0) this.targetYaw -= dxPx * CAM.swipeSens;
+    // The FLAG is a separate question: it only picks the tracking half-life and
+    // cancels a recentre, so it wants a threshold that ignores noise.
+    const turning = Math.abs(look.x) > 0.02 || Math.abs(dxPx) > 0.5;
+    if (turning) this._recentring = false;
 
     // ── ease yaw, with the lag cap ────────────────────────────────────────
     const hl = this._recentring ? CAM.recentreHL : (turning ? CAM.yawHLFree : CAM.yawHL);

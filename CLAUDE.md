@@ -85,6 +85,10 @@ There is no toon shader and no ink outline — the model's own texture maps are
 already stylised, so shading them again just fought them. The look is Robits':
 
 * the character is lit by his own paint, so his colours read at full saturation.
+  `EMISSIVE_SCALE` in `render/materials.js` multiplies whatever the model ships;
+  at big_donny's authored 0.6 his hair washes to near-white, so it runs at 0.25
+  of that. Set it to 0 to kill self-illumination entirely — the form reads best
+  there, at the cost of vibrancy.
   `big_donny.glb` ships this itself — an `emissiveTexture` plus an
   `emissiveFactor` of 0.6 — and `flatten()` LEAVES A MODEL'S OWN EMISSIVE ALONE.
   It only feeds the base colour map back in as an emissive map (at `EMISSIVE`,
@@ -359,7 +363,13 @@ the top before changing a threshold. The parts that look redundant and are not:
 * **Look is a RATE, not a position.** Right-stick deflection sets how fast the
   view turns, with a small deadzone (0.06) and a cubic-blend curve. Reading the
   stick's absolute direction instead, gated at 0.38, meant small pushes did
-  nothing and the rim snapped the whole view round at once.
+  nothing and the rim snapped the whole view round at once. Note `FollowCamera`
+  had its own `> 0.05` gate on top, which threw the gentle end away again.
+* **Turning the camera is NOT aiming.** They are separate verbs and briefly
+  shared one flag, which made the smallest nudge lock his facing to the camera
+  so he stared wherever the view went. Turning has no threshold; FACING locks
+  only while the shoot trigger is engaged (0.40 in, 0.26 out), which is the
+  point at which the stick means "aim there" rather than "look there".
 * **Flick as a *candidate*** — a fast pan and a flick are both fast, so the flick
   can't fire on crossing a threshold. It resolves on what happens next: snapped
   back or released → flick; still travelling after 200ms → it was a pan. Camera

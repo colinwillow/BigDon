@@ -33,9 +33,18 @@ const LOOK_DEADZONE = 0.06;
 // 0 = perfectly linear, 1 = fully cubic. Around 0.6 keeps slow turns
 // controllable without making the full-deflection spin feel sluggish.
 const LOOK_EXPO = 0.6;
-// Deflection past which he is considered to be aiming — it only has to clear
-// the noise floor now, because turning no longer waits for a threshold.
-const AIM_ENGAGE = 0.10;
+// ── TURNING THE CAMERA IS NOT AIMING ───────────────────────────────────────
+// These are two different verbs that briefly shared one flag, and the result
+// was that the smallest nudge of the right stick locked his facing to the
+// camera — so he always stared wherever the view was going, even while running
+// somewhere else.
+//
+// Turning the camera has no threshold at all: any deflection sweeps the view
+// and he carries on facing his direction of travel. FACING only locks to the
+// camera when the shoot trigger is actually engaged, which is the moment the
+// stick genuinely means "aim over there" rather than "look over there". The
+// trigger already has hysteresis (0.40 to engage, 0.26 to release) and already
+// waits out the flick window, so a melee swipe never snaps his facing either.
 
 /** Signed turn rate, -1..1, from a raw stick axis. */
 function lookCurve(v) {
@@ -177,9 +186,9 @@ export class Input {
     // integrates it, and the character faces wherever the camera ends up, so a
     // gentle push is a slow sweep and a hard one is a fast spin — with every
     // speed in between actually reachable.
-    const rmag = this.right.mag;
-    this.aiming = rmag >= AIM_ENGAGE;
     this.shooting = this.right.shootActive || this._mouseDown;
+    // Facing follows the camera only while actually aiming — see above.
+    this.aiming = this.shooting;
 
     // A flick mutes the stick for a beat, so a melee swipe never also whips the
     // view — the same guard the swipe camera used to rely on.

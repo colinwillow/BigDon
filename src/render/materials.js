@@ -27,8 +27,24 @@
 
 import * as THREE from '../../vendor/three/three.module.js';
 
-/** How hard the base texture self-illuminates. 1 = fully lit by its own paint. */
+/** How hard the base texture self-illuminates when a model ships NO emissive of
+ *  its own. 1 = fully lit by its own paint. */
 export const EMISSIVE = 0.92;
+
+/**
+ * Multiplier applied to whatever emissive a model DOES ship.
+ *
+ * big_donny carries an emissiveFactor of 0.6, which on top of the key light and
+ * ACES at exposure 1.1 blows his mid-tones out — the paint stops reading as
+ * shaded material and starts reading as a lamp. Scaling it down keeps the
+ * saturation the emissive is there for without flattening the form.
+ *
+ * At the shipped 0.6 his hair washes to near-white; 0.25 of it (about 0.15
+ * effective) keeps the saturation without losing the shading. Set this to 0 to
+ * disable self-illumination entirely and let the lights do all the work — the
+ * form reads best there, at the cost of some vibrancy.
+ */
+export const EMISSIVE_SCALE = 0.25;
 
 /**
  * Convert everything under `root` to the flat, self-lit look.
@@ -41,6 +57,7 @@ export function flatten(root, opts = {}) {
     emissive = EMISSIVE,
     roughness = 1.0,
     metalness = 0.0,
+    emissiveScale = EMISSIVE_SCALE,
     castShadow = true,
     receiveShadow = true,
     opaque = true,
@@ -92,6 +109,10 @@ export function flatten(root, opts = {}) {
       // at all, and for the world geometry built in code.
       const ownEmissive = m.emissiveMap
         && m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.01;
+      if (ownEmissive) {
+        // Keep the artist's colour and map; only scale the strength.
+        m.emissiveIntensity = (m.emissiveIntensity ?? 1) * emissiveScale;
+      }
       if ('emissive' in m && !ownEmissive) {
         if (m.map) {
           // Self-illuminate from the texture. White emissive + the map means
