@@ -48,6 +48,15 @@ const info = await page.evaluate(() => {
     missing: c.anim.missing,
     selfLit, shiny, textured,
     trimmed: c.anim.trimmed.length,
+    deRooted: c.anim.deRooted.length,
+    // The worst offender in the pack, and the one the slide tackle plays.
+    slideDrift: (() => {
+      const t = c.anim.clips.get('run_slide').tracks
+        .find(t => /Hips\.position$/.test(t.name));
+      if (!t) return -1;
+      const n = t.times.length, v = t.values;
+      return +Math.hypot(v[(n - 1) * 3] - v[0], v[(n - 1) * 3 + 2] - v[2]).toFixed(3);
+    })(),
     runDur: +c.anim.duration('run_fast_forward').toFixed(4),
   };
 });
@@ -98,6 +107,13 @@ ok('the takeoff clip never restarts mid-jump', jump.rewinds === 0,
 ok('the jump actually gets high', jump.apex > 2.5, `apex=${jump.apex}m`);
 ok('duplicated loop frames were trimmed', info.trimmed > 0,
   `${info.trimmed} clip(s) trimmed`);
+// The pack advertises itself as in-place and its cycles are, but the one-shots
+// travel — run_slide most of all. Left in, the mesh slides ahead of where he
+// actually is and snaps back when the clip lets go.
+ok('baked travel was stripped out of the one-shots', info.deRooted > 0,
+  `${info.deRooted} clip(s) de-rooted`);
+ok('the slide tackle no longer carries its own 2.5m', info.slideDrift < 0.01,
+  `run_slide hips travel ${info.slideDrift} units`);
 // 14 keys at 24fps authored to 0.5833s; minus the duplicate that is 0.5417s.
 ok('the sprint cycle lost exactly one frame',
   Math.abs(info.runDur - (0.5833 - 1 / 24)) < 0.002, `run_fast_forward=${info.runDur}s`);

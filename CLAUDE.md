@@ -42,7 +42,7 @@ Two consequences worth knowing:
 
 ```sh
 npm start            # static server on :8123
-node tests/locomotion.mjs   # 85 controller checks, no browser needed
+node tests/locomotion.mjs   # 100 controller checks, no browser needed
 node tests/collision.mjs    # 53 collision checks, no browser needed
 node tests/smoke.mjs        # boots the real game in Chromium
 node tests/gestures.mjs     # drives the sticks with real touch events
@@ -165,6 +165,42 @@ sum(1 for ch in anim['channels']
     if accessors[anim['samplers'][ch['sampler']]['input']]['count'] > 2)
 ```
 
+### "In-place" is true of the cycles and false of the one-shots
+
+The pack advertises itself as in-place and the locomotion genuinely is — every
+walk and run measures a net hips displacement of **0.00**. The ONE-SHOTS are
+not. Measured on `big_donny.glb`, at roughly 1 unit per centimetre:
+
+```
+run_slide 255 · swimming 83 · kick_spin 67 · stand_to_cover 45
+cover_to_stand 38 · jump_to_hang 37 · hang_to_climb_up 25 · landing 5
+```
+
+Code owns movement here, so that travel is not motion, it is a lie: the mesh
+slides forward of where the character actually is and snaps back the instant
+the clip stops driving him. **That snap is what reads as "he teleports back to
+where he was" after a slide tackle**, and no amount of procedural lunge fixes
+it — the two are fighting rather than adding. It is easy to misdiagnose as a
+missing lunge, because the character is genuinely moving the whole time.
+
+`_stripRootMotion` in `AnimationController` handles it at load, per clip and
+binary: a clip whose hips END somewhere else horizontally has that channel
+PINNED to its first key; a clip that ends where it began is not touched at all.
+That split falls exactly along one-shots vs cycles, which is the split that
+matters — sway and travel are the same channel and cannot be separated within a
+clip, but a cycle has no travel to remove and a one-shot's sway is subordinate
+to not detaching from where he is.
+
+**Subtracting only the linear ramp does not work**, and it is the obvious first
+try. `run_slide`'s travel eases out rather than running linear, and the slide
+plays barely half the clip, so the residual still measured **0.66m** of drift
+mid-tackle — the same bug, three quarters smaller. To check a change here,
+measure the hips bone's world position against `character.position` through the
+move; it should stay inside about 7cm, which is ordinary hip sway.
+
+Y is left alone: vertical hip travel is pose (the crouch dip, the climb) in a
+way horizontal travel is not.
+
 ### Rigs are not interchangeable
 
 handyman and big_donny share 57 `mixamorig_*` bone names, which makes clip reuse
@@ -280,6 +316,12 @@ a ledge should be the level's fault, not the player's.
   crouches him; the thumb coming up launches him. A tap is the same motion too
   quick to see much of, which is where the jump's anticipation comes from — and
   is why there is no stand-to-jump clip and none is needed.
+* **EVERY grounded jump goes through the crouch, tap included.** A thumb can
+  come and go faster than the stick arms a crouch, so `releaseCrouch` takes one
+  itself if there isn't one; and a crouch younger than `crouchMinTime` (0.11s)
+  does not launch, it ARMS, and `_update` fires it once the pose has had time to
+  read against `blendHL`. Launching on the release meant a tap showed no crouch
+  at all, which is the whole reason the jump moved onto a press and a release.
 * **Held, the crouch is a slide, and it feeds a LONG JUMP** — the Mario move.
   Momentum carries and bleeds off against `crouchFriction`; release above
   `longJumpAt` and the launch goes flatter (`longJumpSpeed`, below the normal
@@ -404,11 +446,16 @@ the top before changing a threshold. The parts that look redundant and are not:
   stick's absolute direction instead, gated at 0.38, meant small pushes did
   nothing and the rim snapped the whole view round at once. Note `FollowCamera`
   had its own `> 0.05` gate on top, which threw the gentle end away again.
-* **Turning the camera is NOT aiming.** They are separate verbs and briefly
-  shared one flag, which made the smallest nudge lock his facing to the camera
-  so he stared wherever the view went. Turning has no threshold; FACING locks
-  only while the shoot trigger is engaged (0.40 in, 0.26 out), which is the
-  point at which the stick means "aim there" rather than "look there".
+* **The right stick does not turn him at all.** Deflection is the CAMERA and
+  nothing else; his facing belongs to the left stick, plus a right-stick FLICK,
+  which points him at the strike. This went through an intermediate version
+  where facing locked to the camera while the shoot trigger was engaged (0.40
+  in, 0.26 out) — but with no weapons yet, that just meant standing still and
+  looking around spun him on the spot. `Input.aiming` is now permanently false;
+  when weapons land, a held deflection is what claims it back, and the aim
+  camera hook in `main.js` is left in place for that. Note the side effect:
+  the strafe clips only play while aiming, so at the moment they appear only in
+  the tests.
 * **Flick as a *candidate*** — a fast pan and a flick are both fast, so the flick
   can't fire on crossing a threshold. It resolves on what happens next: snapped
   back or released → flick; still travelling after 200ms → it was a pan. Camera

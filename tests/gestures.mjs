@@ -154,8 +154,40 @@ const crouch = await page.evaluate(async () => {
   await raf(); await raf();
   const panJumped = c.velocity.y > 0 || c.position.y > 0.2;
 
+  await settle();
+
+  // ── a press too quick for the stick to arm anything ─────────────────
+  // Down and up inside one tick. There is no crouch to release, so the
+  // release takes one — and the windup is what makes it visible at all.
+  let quickCrouched = false;
+  touch('touchstart', ox, oy);
+  touch('touchend', ox, oy);
+  for (let i = 0; i < 10; i++) {
+    await raf();
+    if (c.state === 'crouch') quickCrouched = true;
+    if (c.state === 'air') break;
+  }
+  const quickJumped = c.state === 'air' || c.velocity.y > 0 || c.position.y > 0.2;
+  await settle();
+
+  // ── deflection is the CAMERA, and only the camera ───────────────────
+  // Standing still with the stick pushed out used to swing him round to face
+  // wherever the view went. The view must move; he must not.
+  const face0 = c.facing;
+  const yaw0 = window.follow.yaw;
+  touch('touchstart', ox, oy);
+  const push = setInterval(() => touch('touchmove', ox + R * 0.9, oy), 16);
+  for (let i = 0; i < 25; i++) await raf();
+  clearInterval(push);
+  const faceMoved = Math.abs(c.facing - face0);
+  const yawMoved = Math.abs(window.follow.yaw - yaw0);
+  touch('touchend', ox + R * 0.9, oy);
+  await raf();
+
   return { preTap, tapFrames, tapCrouched, tapJumped,
-           heldCrouch, heldJumped, panCrouched, panJumped };
+           heldCrouch, heldJumped, panCrouched, panJumped,
+           quickCrouched, quickJumped,
+           faceMoved: +faceMoved.toFixed(4), yawMoved: +yawMoved.toFixed(3) };
 });
 
 await browser.close();
@@ -179,6 +211,16 @@ ok('a held press stays crouched', crouch.heldCrouch);
 ok('and still jumps when released', crouch.heldJumped);
 ok('a camera pan never crouches, not even for a frame', !crouch.panCrouched);
 ok('and a pan does not jump when the thumb lifts', !crouch.panJumped);
+
+ok('a press and release inside one frame still shows the crouch',
+  crouch.quickCrouched, 'the windup is what makes a tap readable');
+ok('and still jumps', crouch.quickJumped);
+// The right stick is the camera and NOTHING else. Both halves matter: asserting
+// only that he did not turn would pass with the stick doing nothing at all.
+ok('a held deflection sweeps the camera', crouch.yawMoved > 0.3,
+  `yaw moved ${crouch.yawMoved} rad`);
+ok('and does not turn HIM', crouch.faceMoved < 0.02,
+  `facing moved ${crouch.faceMoved} rad`);
 
 console.log(fail ? `\n${fail} failed\n` : '\ngestures ok\n');
 process.exit(fail ? 1 : 0);

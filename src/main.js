@@ -172,6 +172,9 @@ function frame(now) {
 
   // The stick steers the camera directly now, so there is nothing to attract
   // it toward — attract() existed to chase an absolute stick direction.
+  // input.aiming is permanently false until weapons land (see Input.sample);
+  // the hook stays so the aim camera comes back with them rather than being
+  // rediscovered.
   if (input.aiming) follow.aimHold();
   follow.update(dt, character, { x: input.lookX, dxPx: input.lookDx });
 

@@ -7,9 +7,9 @@
 //                flick  dodge roll in the flicked direction
 //                tap    recentre the camera behind him
 //
-//   RIGHT stick  push   AIM: he turns to face the stick, camera swings behind,
-//                       and past the trigger zone he shoots
-//                flick  melee (chains into a combo on repeat flicks)
+//   RIGHT stick  push   CAMERA. It sweeps the view and nothing else — it does
+//                       not turn him. (Weapons will claim the held posture.)
+//                flick  melee, and he turns to face the flick
 //                press  CROUCH — and releasing it jumps
 //
 // Keyboard/mouse is a dev convenience so this is playable on a laptop; the
@@ -40,11 +40,9 @@ const LOOK_EXPO = 0.6;
 // somewhere else.
 //
 // Turning the camera has no threshold at all: any deflection sweeps the view
-// and he carries on facing his direction of travel. FACING only locks to the
-// camera when the shoot trigger is actually engaged, which is the moment the
-// stick genuinely means "aim over there" rather than "look over there". The
-// trigger already has hysteresis (0.40 to engage, 0.26 to release) and already
-// waits out the flick window, so a melee swipe never snaps his facing either.
+// and he carries on facing his direction of travel. As of the third pass the
+// right stick does not turn HIM at all — see the note in sample(). His facing
+// is the left stick's, plus whatever direction a flick points him.
 
 // ── PRESS TO CROUCH, RELEASE TO JUMP ───────────────────────────────────────
 // The jump has an anticipation now: the thumb going down crouches him, and the
@@ -255,12 +253,22 @@ export class Input {
     this._screenToWorld(sx, sy, this.move);
     this.moveMag = mag;
 
-    // ── look / aim / shoot ──────────────────────────────────────────────
+    // ── look ────────────────────────────────────────────────────────────
     // The right stick's horizontal deflection is a TURN RATE. The camera
-    // integrates it, and the character faces wherever the camera ends up, so a
-    // gentle push is a slow sweep and a hard one is a fast spin — with every
-    // speed in between actually reachable.
+    // integrates it, so a gentle push is a slow sweep and a hard one is a fast
+    // spin — with every speed in between actually reachable.
     this.shooting = this.right.shootActive || this._mouseDown;
+    // ── THE RIGHT STICK DOES NOT TURN HIM ────────────────────────────────
+    // Deflection is CAMERA ONLY. His facing belongs to the left stick, plus a
+    // right-stick FLICK, which points him at the strike (requestMelee takes the
+    // flick's world angle). Pushing the stick out used to lock his facing to
+    // the camera, so standing still and looking around spun him on the spot.
+    //
+    // The aim posture is not gone, it is unclaimed: when weapons land, a held
+    // deflection is what will mean "aim there" and this becomes
+    // `this.aiming = this.shooting` again. Until then nothing sets it, which is
+    // also why the strafe clips only appear in the tests.
+    this.aiming = false;
     // ── crouch arming ───────────────────────────────────────────────────
     // Runs before the turn is read, so a press that becomes a pan cancels in
     // the same frame it first deflects.
@@ -279,8 +287,6 @@ export class Input {
         if (this.onCrouch) this.onCrouch();
       }
     }
-    // Facing follows the camera only while actually aiming — see above.
-    this.aiming = this.shooting;
 
     // A flick mutes the stick for a beat, so a melee swipe never also whips the
     // view — the same guard the swipe camera used to rely on.

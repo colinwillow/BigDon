@@ -53,6 +53,8 @@ export class Character {
     this.state = 'ground';       // ground | air | crouch | slide | melee | land
     this._stateT = 0;
     this._oneShotEnds = 0;
+    /** A jump waiting on the crouch windup. See releaseCrouch. */
+    this._crouchRelease = false;
 
     this._coyote = 0;
     this._jumpBuffered = -1;
@@ -114,6 +116,7 @@ export class Character {
     if (this.state === 'slide' || this.state === 'melee'
         || this.state === 'hang' || this.state === 'climb'
         || this.state === 'cover' || this.state === 'crouch') return false;
+    this._crouchRelease = false;
     this._enter('crouch');
     return true;
   }
@@ -123,11 +126,29 @@ export class Character {
    *
    * Above longJumpAt he is still sliding with real speed, and that becomes a
    * LONG jump — flatter, faster and much further — which is what makes holding
-   * the button through a run worth doing. Below it, an ordinary jump, so a
-   * plain tap is just a jump with a crouch too brief to notice.
+   * the button through a run worth doing. Below it, an ordinary jump.
+   *
+   * EVERY grounded jump goes through the crouch, including a tap. If the thumb
+   * came and went too fast for the stick to have armed one, this enters it
+   * here; and a crouch younger than crouchMinTime does not launch yet, it
+   * ARMS — _update fires it once the pose has had time to read. Launching
+   * immediately meant a tap never showed the crouch at all, and the whole point
+   * of moving the jump onto a press and a release was that anticipation.
    */
   releaseCrouch() {
+    // A tap: too quick to have armed a crouch, so take one now.
+    if (this.state !== 'crouch') this.startCrouch();
     if (this.state !== 'crouch') return false;
+    if (this._stateT < this.T.crouchMinTime) {
+      this._crouchRelease = true;
+      return true;
+    }
+    return this._launchCrouch();
+  }
+
+  /** The crouch actually leaves the ground. See releaseCrouch. */
+  _launchCrouch() {
+    this._crouchRelease = false;
     const long = this.speed >= this.T.longJumpAt;
     this.velocity.y = long ? this.T.longJumpSpeed : this.T.jumpSpeed;
     if (long) {
@@ -145,9 +166,10 @@ export class Character {
     return true;
   }
 
-  /** Abandon the crouch without jumping — the press turned out to be an aim. */
+  /** Abandon the crouch without jumping — the press turned out to be a look. */
   cancelCrouch() {
     if (this.state !== 'crouch') return;
+    this._crouchRelease = false;
     this._enter('ground');
   }
 
@@ -501,6 +523,12 @@ export class Character {
         break;
       }
       case 'crouch': {
+        // A release that arrived before the pose could read fires here instead,
+        // so even a tap is a crouch and then a jump.
+        if (this._crouchRelease && this._stateT >= this.T.crouchMinTime) {
+          this._launchCrouch();
+          break;
+        }
         // Momentum carries and bleeds off — this is a slide, not a stop. He can
         // still aim it a little, which is what lets you line a long jump up.
         const sp = Math.hypot(this.velocity.x, this.velocity.z);

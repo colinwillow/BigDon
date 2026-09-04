@@ -53,6 +53,10 @@ export class AnimationController {
     this.clips = new Map();
     for (const c of clips) this.clips.set(c.name, c);
 
+    /** Clips that had baked-in travel taken out of them. Debug only. */
+    this.deRooted = [];
+    this._stripRootMotion();
+
     /** Clips whose duplicated last frame was trimmed. Debug only. */
     this.trimmed = [];
     this._trimLoopSeams();
@@ -121,6 +125,60 @@ export class AnimationController {
    *
    * Runs before _buildDerived so the reversed back-pedal inherits the trim.
    */
+  /**
+   * Take the baked travel out of the hips.
+   *
+   * The pack is advertised as in-place and the locomotion cycles genuinely are
+   * — every walk and run measures a net hip displacement of 0.00. The ONE-SHOTS
+   * are not: run_slide carries 255 units of Z (about 2.5m at this rig's scale),
+   * kick_spin 67, jump_to_hang 37. Code owns movement here, so that travel is
+   * not motion, it is a lie: the mesh slides forward of where the character
+   * actually is and then snaps back the instant the clip stops driving him.
+   * That snap is what reads as "he teleports back to where he was" after a
+   * slide tackle, and no amount of procedural lunge fixes it because the two
+   * are fighting rather than adding.
+   *
+   * The rule is per-clip and binary: a clip whose hips END somewhere else
+   * horizontally has that channel PINNED to its first key; a clip that ends
+   * where it began is not touched at all. That split falls exactly along
+   * one-shots vs cycles in this pack, which is the split that matters — sway
+   * and travel are the same channel and cannot be told apart within a clip, but
+   * a cycle has no travel to remove and a one-shot's sway is subordinate to not
+   * detaching from where the character actually is.
+   *
+   * Subtracting only the linear ramp was tried first, on the theory that it
+   * would keep the sway. It does not work: run_slide's travel is not linear
+   * (it eases out), and the slide plays barely half the clip, so the residual
+   * measured 0.66m of drift mid-tackle — the same bug, three quarters smaller.
+   *
+   * Y is left alone: vertical hip travel is pose (the crouch dip, the climb) in
+   * a way horizontal travel is not.
+   *
+   * Runs before _trimLoopSeams so the seam test sees the final values, and
+   * before _buildDerived so the reversed back-pedal inherits the fix.
+   */
+  _stripRootMotion() {
+    // Roughly a centimetre at this rig's scale — below it the "travel" is
+    // export rounding, and there is nothing to take out.
+    const MIN = 1.0;
+    for (const [name, clip] of this.clips) {
+      for (const t of clip.tracks) {
+        if (!/(hips|root)\.position$/i.test(t.name)) continue;
+        const n = t.times.length;
+        if (n < 2) continue;
+        const v = t.values;
+        const dx = v[(n - 1) * 3] - v[0];
+        const dz = v[(n - 1) * 3 + 2] - v[2];
+        if (Math.hypot(dx, dz) < MIN) continue;
+        for (let k = 1; k < n; k++) {
+          v[k * 3] = v[0];
+          v[k * 3 + 2] = v[2];
+        }
+        this.deRooted.push(`${name} (${Math.hypot(dx, dz).toFixed(1)})`);
+      }
+    }
+  }
+
   _trimLoopSeams() {
     for (const [name, clip] of this.clips) {
       const step = this._frameStep(clip);

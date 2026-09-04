@@ -367,10 +367,41 @@ console.log('\ncrouch and the long jump');
   ok('crouch only starts on the ground', c.startCrouch() === true);
   ok('and puts him in the crouch state', c.state === 'crouch');
   ok('crouching again is a no-op', c.startCrouch() === false);
+  run(c, 0.3, {});                            // past the windup
   c.releaseCrouch();
   ok('releasing a standing crouch is a plain jump',
     near(c.velocity.y, TUNING.jumpSpeed, 1e-6), `vy=${c.velocity.y.toFixed(2)}`);
   ok('and it leaves the crouch', c.state === 'air');
+}
+{
+  // THE TAP. The thumb can come and go faster than the stick can arm a crouch,
+  // and faster than the pose can read even once it has — so the jump waits out
+  // crouchMinTime rather than firing on the release. A check that only asserted
+  // "a tap jumps" would pass with the crouch skipped entirely, which is the bug
+  // this exists for.
+  const c = makeChar();
+  ok('a release with no crouch takes one first', c.releaseCrouch() === true);
+  ok('and he is crouching, not airborne', c.state === 'crouch');
+  run(c, TUNING.crouchMinTime * 0.5, {});
+  ok('a tap does not launch inside the windup', c.state === 'crouch',
+    `state=${c.state}`);
+  ok('and he has not left the ground', c.grounded === true);
+  run(c, TUNING.crouchMinTime, {});
+  ok('but it does launch once the windup is up', c.state === 'air',
+    `state=${c.state}`);
+  ok('with the ordinary jump speed', c.velocity.y > 0);
+  run(c, 3.0, {});
+  ok('and he lands from it', c.grounded === true);
+}
+{
+  // A crouch abandoned mid-windup must not fire the jump it had queued.
+  const c = makeChar();
+  c.releaseCrouch();
+  run(c, TUNING.crouchMinTime * 0.5, {});
+  c.cancelCrouch();
+  run(c, 0.5, {});
+  ok('a cancel drops the queued jump', c.state === 'ground', `state=${c.state}`);
+  ok('and he stays on the ground', c.grounded === true && c.position.y === 0);
 }
 {
   // The slide. Enter at speed and the momentum carries, bleeding off against
@@ -402,7 +433,7 @@ console.log('\ncrouch and the long jump');
   const long = makeChar();
   run(long, 2.0, { moveZ: -1 });
   long.startCrouch();
-  run(long, 1 / 60, {});
+  run(long, TUNING.crouchMinTime + 1 / 60, {});
   ok('still above the long-jump threshold', long.speed >= TUNING.longJumpAt,
     `speed=${long.speed.toFixed(2)}`);
   const groundSpeed = long.speed;
@@ -453,6 +484,66 @@ console.log('\ncrouch and the long jump');
   const e = makeChar();
   e.requestSlide(0);
   ok('a slide tackle cannot be crouch-cancelled', e.startCrouch() === false);
+}
+
+console.log('\nbaked root motion');
+{
+  // The one-shots in this pack travel: run_slide carries ~2.5m of Z in the hips
+  // track, which slides the mesh forward of where the character actually is and
+  // then snaps it back the moment the clip stops driving him. That snap is the
+  // "he teleports back" after a slide tackle.
+  //
+  // The rule is binary and per-clip: a clip that ENDS somewhere else has its
+  // horizontal hips channel pinned; a clip that ends where it began keeps
+  // everything, sway included. So both halves need pinning — a check that only
+  // measured the travelling clip would pass with every cycle flattened into a
+  // mannequin on rails.
+  const step = 1 / 24;
+  const times = [0, step, step * 2, step * 3, step * 4];
+  // 1 unit of travel per key, with a 0.5-unit sway riding on top of it.
+  const sway = [0, 0.5, 0, -0.5, 0];
+  const vals = [];
+  for (let k = 0; k < 5; k++) vals.push(0, 0, k + sway[k]);
+  const hips = new THREE.VectorKeyframeTrack('mixamorig_Hips.position', times, vals);
+  // A non-hips track with the same shape must be left alone entirely.
+  const hand = new THREE.VectorKeyframeTrack(
+    'mixamorig_LeftHand.position', times, vals.slice());
+  const clip = new THREE.AnimationClip('travels', -1, [hips, hand]);
+
+  const model = new THREE.Object3D();
+  model.add(new THREE.Object3D());
+  const a = new Character(model, [clip]).anim;
+  const out = a.clips.get('travels').tracks.find(t => t.name.includes('Hips')).values;
+  const z = (k) => out[k * 3 + 2];
+
+  ok('a clip that travels ends where it began', near(z(4), z(0), 1e-6),
+    `z ${z(0).toFixed(3)} -> ${z(4).toFixed(3)}`);
+  // Mid-clip matters as much as the end: the slide plays barely half of
+  // run_slide, so a fix that only lands by the last key drifts through the
+  // whole tackle. This is what the earlier ramp subtraction failed.
+  ok('and does not drift part-way through either',
+    near(z(1), z(0), 1e-6) && near(z(2), z(0), 1e-6) && near(z(3), z(0), 1e-6),
+    `keys ${[z(1), z(2), z(3)].map(n => n.toFixed(3)).join(', ')} vs ${z(0).toFixed(3)}`);
+  ok('the clip is listed as de-rooted', a.deRooted.some(s => s.startsWith('travels')),
+    a.deRooted.join(', '));
+
+  const other = a.clips.get('travels').tracks.find(t => t.name.includes('Hand'));
+  ok('a non-hips track is untouched', near(other.values[14], 4, 1e-9),
+    `last z=${other.values[14]}`);
+
+  // A cycle that already ends where it began must lose nothing.
+  const flatVals = [];
+  for (let k = 0; k < 5; k++) flatVals.push(0, 0, sway[k]);
+  const cyc = new THREE.AnimationClip('cyclic', -1, [
+    new THREE.VectorKeyframeTrack('mixamorig_Hips.position', times, flatVals),
+  ]);
+  const b = new Character(model, [cyc]).anim;
+  ok('an already in-place cycle is not listed', b.deRooted.length === 0,
+    b.deRooted.join(', '));
+  const cz = b.clips.get('cyclic').tracks[0].values;
+  ok('and keeps every bit of its sway',
+    near(cz[5], 0.5, 1e-6) && near(cz[11], -0.5, 1e-6),
+    `sway keys ${cz[5]}, ${cz[11]} — 0 means a cycle got flattened`);
 }
 
 console.log('\nloop seams');

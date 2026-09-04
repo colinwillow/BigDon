@@ -252,6 +252,10 @@ export const TUNING = {
   // whose momentum feeds a long jump — the Mario move.
   crouchFriction: 11.0,     // m/s^2 bled off while sliding; lower = longer slide
   crouchSteer: 3.0,         // rad/sec — he can still aim the slide, barely
+  // The crouch windup every grounded jump goes through, tap included. Long
+  // enough for the pose to read against blendHL (0.075) and short enough that
+  // the jump still feels like it fired off the thumb.
+  crouchMinTime: 0.11,
   // (the thumb thresholds that decide a press IS a crouch live with the stick,
   //  in Input.js — CROUCH_ARM_MS and CROUCH_MAX_PUSH.)
   // Release above this speed and the jump becomes a LONG jump: flatter, faster,
