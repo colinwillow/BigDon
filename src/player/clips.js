@@ -209,6 +209,10 @@ export const TUNING = {
   // ── melee (right-stick flick) ────────────────────────────────────────────
   // A swing is a MOVE: none of these clips carry root motion, so the step into
   // the strike is procedural or it does not happen at all.
+  // The strike's own turn. Faster than turnRate (a swing should snap round)
+  // but eased, not assigned: a half turn takes about 0.13s, which lands inside
+  // meleeLungeTime so he is pointing at the target before the hit does.
+  meleeTurnRate: 24.0,
   meleeLungeSpeed: 11.0,
   meleeLungeTime: 0.18,
   // Control returns at this FRACTION of the strike's own length, so every clip

@@ -63,6 +63,7 @@ export class Character {
     this._slideCooldown = 0;
     this._slideDir = new THREE.Vector3();
     this._meleeDir = new THREE.Vector3();
+    this._meleeFacing = 0;
     this._comboIndex = 0;
     this._comboT = 0;
     /** Which hand/foot the NEXT strike uses. Alternates down the chain. */
@@ -221,10 +222,17 @@ export class Character {
       this._meleeSide = this._meleeSide === 'left' ? 'right' : 'left';
     }
     this._comboT = this.T.comboWindow;
-    if (worldAngle != null) this.facing = worldAngle;
-    // Lunge along the FACING, which the line above has just set to the flick
-    // direction — so he steps into wherever you swung.
-    this._meleeDir.set(Math.sin(this.facing), 0, Math.cos(this.facing));
+    // EASE the turn, never assign it — the same rule cover already follows. An
+    // assignment here teleported him to face the flick, and a strike that
+    // begins with an instant 180 reads as the whole move being choppy, whatever
+    // the clip does afterwards. _updateFacing takes it from here.
+    this._meleeFacing = worldAngle != null ? worldAngle : this.facing;
+    // The lunge goes along the FLICK, not along the facing that is still
+    // catching up to it — so the step is a straight line into wherever you
+    // swung, with the pivot laid over the top of it. Driving it off the eased
+    // facing instead sends the first frames of a big turn the old way and
+    // curves him round, which is a swing that misses where you aimed it.
+    this._meleeDir.set(Math.sin(this._meleeFacing), 0, Math.cos(this._meleeFacing));
     this._enter('melee');
     this._oneShotEnds = this.anim.play(this.currentMeleeClip);
     return true;
@@ -734,6 +742,14 @@ export class Character {
       return;
     }
 
+    if (this.state === 'melee') {
+      // Fast, but a turn you can watch: meleeTurnRate covers a half turn inside
+      // the lunge, so he has arrived by the time the strike lands.
+      this.facing = moveTowardAngle(
+        this.facing, this._meleeFacing, this.T.meleeTurnRate * dt);
+      return;
+    }
+
     let want = this.facing;
     let rate = this.T.turnRate;
 
@@ -741,7 +757,7 @@ export class Character {
       // AIM MODE: the right stick owns the facing outright.
       want = this.aimYaw;
       rate = this.T.turnRateAim;
-    } else if (intent > 0.05 && this.state !== 'melee') {
+    } else if (intent > 0.05) {
       // FREE MODE: face where he is going.
       want = Math.atan2(this._moveWorld.x, this._moveWorld.z);
     } else {

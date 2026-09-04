@@ -84,6 +84,30 @@ const jump = await page.evaluate(async () => {
   return { rewinds, apex: Math.max(...samples.map(s => s.y)), maxT: Math.max(...samples.map(s => s.t)) };
 });
 
+// ── the whole blend must always be worth exactly one pose ─────────────────
+// three's mixer does not normalise. Over 1 and the bones are pushed past every
+// clip feeding them; under 1 and the remainder goes to the BIND POSE. A melee
+// combo used to run at 1.36 because the tree was damped toward an
+// already-overlay-scaled target, so it lagged the strike it was making room
+// for — which is what "no transition, it just pops" looks like from outside.
+const blend = await page.evaluate(async () => {
+  const c = window.character;
+  const raf = () => new Promise(r => requestAnimationFrame(r));
+  c.position.set(0, 0, 0); c.velocity.set(0, 0, 0); c.cover = null;
+  for (let i = 0; i < 20; i++) await raf();
+  let min = Infinity, max = 0;
+  const sample = () => {
+    let t = 0;
+    c.anim.actions.forEach((a) => { t += a.getEffectiveWeight(); });
+    min = Math.min(min, t); max = Math.max(max, t);
+  };
+  c.requestMelee(Math.PI);                       // a half turn behind him
+  for (let i = 0; i < 10; i++) { await raf(); sample(); }
+  c.requestMelee(0);                             // ...chained into another
+  for (let i = 0; i < 25; i++) { await raf(); sample(); }
+  return { min: +min.toFixed(3), max: +max.toFixed(3) };
+});
+
 await page.screenshot({ path: 'scratch/smoke.png' });
 await browser.close();
 
@@ -117,6 +141,10 @@ ok('the slide tackle no longer carries its own 2.5m', info.slideDrift < 0.01,
 // 14 keys at 24fps authored to 0.5833s; minus the duplicate that is 0.5417s.
 ok('the sprint cycle lost exactly one frame',
   Math.abs(info.runDur - (0.5833 - 1 / 24)) < 0.002, `run_fast_forward=${info.runDur}s`);
+ok('a melee chain never blends past one pose', blend.max < 1.02,
+  `weights peaked at ${blend.max}`);
+ok('and never blends under one either', blend.min > 0.98,
+  `weights bottomed at ${blend.min} — the shortfall is the bind pose`);
 ok('no console errors', errors.length === 0, errors.join(' | '));
 
 console.log(fail ? `\n${fail} failed\n` : '\nsmoke ok\n');

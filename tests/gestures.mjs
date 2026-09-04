@@ -95,6 +95,16 @@ const crouch = await page.evaluate(async () => {
   // Sleeping a fixed 120ms and asking "is he crouching yet" is therefore a coin
   // flip on the machine, not on the code.
   const raf = () => new Promise(r => requestAnimationFrame(r));
+  // A release does not always launch on the spot: a crouch younger than
+  // crouchMinTime arms the jump and _update fires it once the windup is up, so
+  // a tap's launch can be a few frames behind the thumb lifting.
+  const jumped = async () => {
+    for (let i = 0; i < 12; i++) {
+      if (c.state === 'air' || c.velocity.y > 0 || c.position.y > 0.2) return true;
+      await raf();
+    }
+    return false;
+  };
   const settle = async () => {
     // Back on the ground, standing, before the next scenario.
     for (let i = 0; i < 400 && !(c.grounded && c.state === 'ground'); i++) {
@@ -117,8 +127,7 @@ const crouch = await page.evaluate(async () => {
   while (c.state !== 'crouch' && tapFrames < 8) { await raf(); tapFrames++; }
   const tapCrouched = c.state === 'crouch';
   touch('touchend', ox, oy);
-  await raf(); await raf();
-  const tapJumped = c.velocity.y > 0 || c.position.y > 0.2;
+  const tapJumped = await jumped();
   await settle();
 
   // ── a hold, thumb parked at the origin ──────────────────────────────
@@ -126,8 +135,7 @@ const crouch = await page.evaluate(async () => {
   await wait(400);
   const heldCrouch = c.state === 'crouch';
   touch('touchend', ox, oy);
-  await raf(); await raf();
-  const heldJumped = c.velocity.y > 0 || c.position.y > 0.2;
+  const heldJumped = await jumped();
   await settle();
 
   // ── a camera pan: press, then drag straight out ─────────────────────
@@ -167,7 +175,7 @@ const crouch = await page.evaluate(async () => {
     if (c.state === 'crouch') quickCrouched = true;
     if (c.state === 'air') break;
   }
-  const quickJumped = c.state === 'air' || c.velocity.y > 0 || c.position.y > 0.2;
+  const quickJumped = await jumped();
   await settle();
 
   // ── deflection is the CAMERA, and only the camera ───────────────────

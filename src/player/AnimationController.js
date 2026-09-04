@@ -77,6 +77,12 @@ export class AnimationController {
 
     /** The active overlay, or null. */
     this.oneShot = null;
+    /** The overlay still draining out of the slot after endOneShot. */
+    this._lastShot = null;
+    /** The overlay being crossfaded out of the slot by a newer one. */
+    this._prevShot = null;
+    /** 0..1 handover between _prevShot and the current overlay. */
+    this._shotMix = 1;
     this._oneShotWeight = 0;
 
     this.missing = [];
@@ -410,12 +416,30 @@ export class AnimationController {
     action.time = start * clip.duration;
     action.play();
 
+    // A strike landing on top of a strike hands the SLOT over rather than
+    // stacking: the outgoing clip keeps the slot's weight until the incoming
+    // one has taken it. See update() for why the difference is visible.
+    const outgoing = this.oneShot || this._lastShot;
+    if (outgoing && outgoing.name !== name) {
+      this._prevShot = outgoing;
+      this._shotMix = 0;
+    } else {
+      this._prevShot = null;
+      this._shotMix = 1;
+    }
     this.oneShot = { name, action };
+    this._lastShot = this.oneShot;
     return (clip.duration * (1 - start)) / Math.max(timeScale, 0.01);
   }
 
   /** Let the overlay fade back into the tree. */
   endOneShot() {
+    // _lastShot stays: the slot is still worth _oneShotWeight while it drains,
+    // and that weight has to keep going to the clip that earned it. Dropping it
+    // into the tree instead let it decay on the tree's own half-life, so for a
+    // few frames the weights summed to less than one — and the remainder in
+    // three's mixer is the BIND POSE, which reads as him going briefly limp on
+    // the way out of every strike.
     this.oneShot = null;
   }
 
@@ -424,26 +448,52 @@ export class AnimationController {
   // ── per-frame apply ───────────────────────────────────────────────────────
 
   update(dt) {
-    // The overlay's weight is what the tree is scaled DOWN by, so the two
-    // always sum to 1 and the character never goes limp between them.
+    // ── ONE BUDGET, NEVER MORE THAN ONE ─────────────────────────────────
+    // three's mixer does not normalise: weights summing over 1 push the bones
+    // past every clip that fed them, and weights summing under 1 give the
+    // remainder to the BIND POSE. Both are visible, and a melee combo used to
+    // do the first — the outgoing strike decayed on the TREE's half-life while
+    // the incoming one rose on the overlay's, measured together at 1.54.
+    //
+    // So the overlay is a SLOT worth _oneShotWeight, the tree gets exactly what
+    // is left, and when one strike replaces another the two share the slot
+    // rather than each taking all of it.
     const wantOverlay = this.oneShot ? 1 : 0;
     const hl = this.oneShot ? TUNING.oneShotIn : TUNING.oneShotOut;
     this._oneShotWeight = damp(this._oneShotWeight, wantOverlay, hl, dt);
+    this._shotMix = damp(this._shotMix, 1, TUNING.oneShotIn, dt);
+    if (this._shotMix > 0.999) this._prevShot = null;
+    if (this._oneShotWeight < 0.001 && !this.oneShot) this._lastShot = null;
     const treeScale = 1 - this._oneShotWeight;
 
+    // The slot's occupant: the live overlay, or the one still draining out of
+    // it after endOneShot.
+    const held = this.oneShot || this._lastShot;
+
     for (const [name, action] of this.actions) {
-      const isOverlay = this.oneShot && this.oneShot.name === name;
+      const isOverlay = (held && held.name === name)
+        || (this._prevShot && this._prevShot.name === name);
       let w;
-      if (isOverlay) {
-        w = this._oneShotWeight;
+      if (held && held.name === name) {
+        w = this._oneShotWeight * this._shotMix;
+      } else if (this._prevShot && this._prevShot.name === name) {
+        w = this._oneShotWeight * (1 - this._shotMix);
       } else {
-        const t = (this.target.get(name) || 0) * treeScale;
         // Smoothed so a direction change crossfades rather than pops. The
         // overlay is exempt: a melee that eased in over 75ms would feel mushy.
-        w = damp(this.weights.get(name) || 0, t, TUNING.blendHL, dt);
+        //
+        // Note the target is the RAW one — treeScale is applied below, after
+        // the damping, not folded into it. Damping toward an already-scaled
+        // target makes the tree lag the overlay it is supposed to be making
+        // room for: the overlay rises on a 0.05 half-life and the tree gets out
+        // of the way on 0.075, so for the first few frames of every strike the
+        // two summed to 1.36 and the poses fought. Scaling afterwards keeps the
+        // tree a normalised blend of itself, worth exactly treeScale.
+        w = damp(this.weights.get(name) || 0, this.target.get(name) || 0,
+                 TUNING.blendHL, dt);
       }
       this.weights.set(name, w);
-      action.setEffectiveWeight(w);
+      action.setEffectiveWeight(isOverlay ? w : w * treeScale);
 
       // Scrub every locomotion clip to the shared phase. Air clips and overlays
       // (and the fading tail of a just-ended overlay) run on their own clock.

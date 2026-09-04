@@ -42,7 +42,7 @@ Two consequences worth knowing:
 
 ```sh
 npm start            # static server on :8123
-node tests/locomotion.mjs   # 100 controller checks, no browser needed
+node tests/locomotion.mjs   # 106 controller checks, no browser needed
 node tests/collision.mjs    # 53 collision checks, no browser needed
 node tests/smoke.mjs        # boots the real game in Chromium
 node tests/gestures.mjs     # drives the sticks with real touch events
@@ -357,6 +357,36 @@ Three things there are easy to get wrong:
   previous melee as an abort meant the next press could not jump at all for a
   quarter of a second after every swipe. `tests/gestures.mjs` pins the tap, the
   hold and the pan.
+
+### Melee: turn into the flick, and keep the blend worth one pose
+
+Two separate things made a flicked strike read as choppy, and they compounded.
+
+* **`requestMelee` assigned `facing`.** Same rule as cover: EASE, never assign.
+  A strike that opens with an instant half-turn reads as the whole move being
+  broken however good the clip is. `meleeTurnRate` (24 rad/s) covers a half turn
+  in about 0.13s, which lands inside `meleeLungeTime`, so he is pointing at the
+  target before the hit does. The LUNGE still goes along the flick angle, not
+  along the facing that is catching up to it — driving it off the eased facing
+  sends the first frames of a big turn the old way and curves him round.
+* **three's `AnimationMixer` does not normalise weights.** Over 1 and the bones
+  are pushed past every clip feeding them; under 1 and the remainder goes to the
+  BIND POSE. Both are visible. Two bugs here, both measured on a real chain:
+  * the tree was damped toward a target that had ALREADY been multiplied by
+    `treeScale`, so it lagged the overlay it was meant to be making room for —
+    the overlay rises on a 0.05 half-life and the tree got out of the way on
+    0.075. Peak total **1.36**. Scale after the damping, not before, and the
+    tree stays a normalised blend of itself worth exactly `treeScale`.
+  * a strike landing on a strike had both at full overlay weight, because the
+    outgoing one fell back into the tree and decayed on the tree's half-life.
+    The overlay is now a SLOT worth `_oneShotWeight` that the two share
+    (`_shotMix`), and `_lastShot` keeps the slot's weight pointed at the clip
+    that earned it while it drains after `endOneShot` — dropping it into the
+    tree there made the total dip to **0.79**, which is him going briefly limp
+    on the way out of every strike.
+
+  `tests/smoke.mjs` now asserts the total stays inside 1 +/- 0.02 through a
+  chain. It is a cheap check and it would have caught both.
 
 Two clip-level rules learned the hard way:
 

@@ -27,6 +27,22 @@ function makeChar() {
   return new Character(model, []);
 }
 
+/**
+ * A Character with real (if featureless) clips under the given names, so that
+ * play() reports a duration and a one-shot state lasts more than a frame. With
+ * no clips at all a melee ends on the frame it starts, which quietly turns any
+ * check of what happens DURING one into a check of nothing.
+ */
+function makeCharWith(names, dur = 1.0) {
+  const model = new THREE.Object3D();
+  model.add(new THREE.Object3D());
+  const clips = names.map((n) => new THREE.AnimationClip(n, dur, [
+    new THREE.VectorKeyframeTrack('.position', [0, dur / 2, dur],
+      [0, 0, 0, 0, 0.1, 0, 0, 0, 0]),
+  ]));
+  return new Character(model, clips);
+}
+
 /** Step for `secs` at a fixed 60Hz with a constant input. */
 function run(c, secs, input) {
   const dt = 1 / 60;
@@ -357,6 +373,40 @@ console.log('\ndouble jump');
   c.requestJump();
   run(c, 1 / 60, {});
   ok('landing rearms the double jump', c.velocity.y > 0, `vy=${c.velocity.y.toFixed(2)}`);
+}
+
+console.log('\nmelee turns, it does not teleport');
+{
+  // The flick angle is where he ENDS UP, not where he is put. Assigning facing
+  // was a visible snap of up to half a turn at the head of every strike, which
+  // reads as the whole move being choppy however good the clip is.
+  const c = makeCharWith(['punch_jab_left', 'punch_jab_right']);
+  const AIM = 2.0;                       // well clear of +-PI, so no wrap ties
+  c.requestMelee(AIM);
+  ok('a melee does not move his facing on the frame it fires',
+    near(c.facing, 0, 1e-9), `facing=${c.facing.toFixed(3)}`);
+  run(c, 1 / 60, {});
+  const first = c.facing;
+  ok('it starts turning toward the flick', first > 0.01 && first < AIM,
+    `after one frame facing=${first.toFixed(3)} of ${AIM}`);
+  ok('and does not get there in one frame', first < AIM * 0.6,
+    `facing=${first.toFixed(3)} — that is a teleport, not a turn`);
+  run(c, 0.2, {});
+  ok('but it does arrive, inside the lunge',
+    near(wrapAngle(c.facing - AIM), 0, 0.02), `facing=${c.facing.toFixed(3)}`);
+}
+{
+  // The LUNGE goes along the flick, not along the facing that is still catching
+  // up to it. Driving it off the eased facing sends the first frames of a big
+  // turn the old way, so the swing lands somewhere you did not aim it.
+  const c = makeCharWith(['punch_jab_left', 'punch_jab_right']);
+  c.requestMelee(Math.PI / 2);           // his right: world +X
+  run(c, TUNING.meleeLungeTime, {});
+  ok('the lunge goes where the flick pointed, from the first frame',
+    c.position.x > 0.3, `x=${c.position.x.toFixed(2)}`);
+  ok('and does not curve away along the old facing',
+    Math.abs(c.position.z) < c.position.x * 0.2,
+    `x=${c.position.x.toFixed(2)} z=${c.position.z.toFixed(2)}`);
 }
 
 console.log('\ncrouch and the long jump');
