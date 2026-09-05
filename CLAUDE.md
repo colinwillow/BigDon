@@ -42,7 +42,7 @@ Two consequences worth knowing:
 
 ```sh
 npm start            # static server on :8123
-node tests/locomotion.mjs   # 128 controller checks, no browser needed
+node tests/locomotion.mjs   # 122 controller checks, no browser needed
 node tests/collision.mjs    # 53 collision checks, no browser needed
 node tests/smoke.mjs        # boots the real game in Chromium
 node tests/gestures.mjs     # drives the sticks with real touch events
@@ -458,13 +458,14 @@ the legs under him, which is what a jump looks like. A ~1s hang is not long
 enough to read a takeoff/rise/fall sequence; blending three across it looks like
 a stutter.
 
-**The LONG jump is the exception, and it uses `falling` on purpose.** That
-face-down tilt is exactly the read for a move whose point is that he threw
-himself forward. `_dive()` holds it while he is still RISING and fades it out
-over the last of the climb (`diveHoldFrac` of `longJumpSpeed`), so he is upright
-again before he lands — hold it through the descent and a jump becomes a
-skydive. `lastJumpWasLong` has to be cleared by every other launch, or one long
-jump leaves every later hop face-down.
+**`falling` was tried as the LONG jump's launch pose and is wrong**, even
+though the reasoning sounds right (a move whose point is that he threw himself
+forward wants a forward tilt). What the pack has is a *skydiver* — face-down,
+spread, unhurried — and at 21 m/s that reads as floating, not as being launched.
+The move wants a fast flail with the arms back, which is a clip that does not
+exist yet. `Character.lastJumpWasLong` is left in place as the hook for it; the
+mechanism to fade one pose into another across the rise is in the history if it
+is wanted back. Until then the airborne pose is ONE clip for every jump.
 
 ### Cover: back to the wall, and the sided clips are a LEAN
 

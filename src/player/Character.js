@@ -64,7 +64,13 @@ export class Character {
     this._slideDir = new THREE.Vector3();
     this._meleeDir = new THREE.Vector3();
     this._meleeFacing = 0;
-    /** Did the last launch come out of a running crouch? Drives the dive pose. */
+    /**
+     * Did the last launch come out of a running crouch? Nothing reads it right
+     * now — it is here for a launch POSE, once there is a clip worth using.
+     * `falling` was tried and is wrong: it is a face-down skydive, and what the
+     * move wants is a fast flail with the arms back. Every other launch clears
+     * this, or one long jump would leave every later hop in that pose.
+     */
     this.lastJumpWasLong = false;
     this._comboIndex = 0;
     this._comboT = 0;
@@ -807,19 +813,6 @@ export class Character {
     this.facing = moveTowardAngle(this.facing, want, rate * dt);
   }
 
-  /**
-   * How much of the launch dive the air pose should be showing, 0..1.
-   *
-   * Only out of a long jump, and only on the way UP: the tilt is him having
-   * thrown himself forward, so holding it through the descent turns a jump into
-   * a skydive. Faded over the last of the rise rather than switched, so the
-   * two poses cross over rather than snapping.
-   */
-  _dive() {
-    if (!this.lastJumpWasLong || this.velocity.y <= 0) return 0;
-    return clamp01(this.velocity.y / (this.T.longJumpSpeed * this.T.diveHoldFrac));
-  }
-
   _drive(dt) {
     const a = this.anim;
     if (this.state === 'hang') {
@@ -837,7 +830,7 @@ export class Character {
     if (a.busy) {
       // An overlay is playing; the tree still gets asked for a pose so the
       // blend underneath is the right one when the overlay fades out.
-      if (!this.grounded) a.air(this._dive());
+      if (!this.grounded) a.air();
       else a.locomotion(this.speed, this._localMoveAngle(), this.speed * dt);
       return;
     }
@@ -846,7 +839,7 @@ export class Character {
       return;
     }
     if (!this.grounded) {
-      a.air(this._dive());
+      a.air();
     } else {
       a.locomotion(this.speed, this._localMoveAngle(), this.speed * dt);
     }

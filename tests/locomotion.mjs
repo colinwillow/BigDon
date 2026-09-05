@@ -654,56 +654,6 @@ console.log('\ncrouch and the long jump');
   ok('a slide tackle cannot be crouch-cancelled', e.startCrouch() === false);
 }
 
-console.log('\nthe long jump dive');
-{
-  // Out of a long jump the air pose is `falling`, a face-down tilt that reads
-  // as having thrown himself forward. Out of anything else it is `floating`,
-  // upright with the legs under him. Both directions matter: a check that only
-  // looked for the dive would pass with every hop turned into a skydive.
-  const dive = () => TUNING && CLIPS.dive;
-  const weightOf = (c, name) => c.anim.target.get(name) || 0;
-
-  const c = makeCharWith([CLIPS.fall, CLIPS.dive, CLIPS.idle]);
-  run(c, 2.0, { moveZ: -1 });
-  c.startCrouch();
-  run(c, TUNING.crouchMinTime + 1 / 60, {});
-  c.releaseCrouch();
-  c.update(1 / 60, { moveX: 0, moveZ: -1, aiming: false, aimYaw: 0 });
-  ok('a long jump launches into the dive', weightOf(c, dive()) > 0.9,
-    `dive=${weightOf(c, dive()).toFixed(2)} float=${weightOf(c, CLIPS.fall).toFixed(2)}`);
-
-  // ...and he rights himself before he lands, rather than skydiving into it.
-  run(c, 0.6, { moveZ: -1 });
-  c.update(1 / 60, { moveX: 0, moveZ: -1, aiming: false, aimYaw: 0 });
-  ok('and is out of it by the time he is coming down',
-    c.velocity.y < 0 && weightOf(c, dive()) === 0,
-    `vy=${c.velocity.y.toFixed(1)} dive=${weightOf(c, dive()).toFixed(2)}`);
-
-  const n = makeCharWith([CLIPS.fall, CLIPS.dive, CLIPS.idle]);
-  run(n, 2.0, { moveZ: -1 });
-  n.requestJump();
-  n.update(1 / 60, { moveX: 0, moveZ: -1, aiming: false, aimYaw: 0 });
-  ok('an ordinary running jump does not dive', weightOf(n, dive()) === 0,
-    `dive=${weightOf(n, dive()).toFixed(2)}`);
-  ok('it floats', weightOf(n, CLIPS.fall) > 0.9,
-    `float=${weightOf(n, CLIPS.fall).toFixed(2)}`);
-
-  // The flag must not stick: a long jump followed by an ordinary one is the
-  // obvious way to leave every later hop face-down.
-  run(n, 3.0, { moveZ: -1 });
-  const after = makeCharWith([CLIPS.fall, CLIPS.dive, CLIPS.idle]);
-  run(after, 2.0, { moveZ: -1 });
-  after.startCrouch();
-  run(after, TUNING.crouchMinTime + 1 / 60, {});
-  after.releaseCrouch();
-  run(after, 3.0, {});
-  ok('and he has landed from the long jump', after.grounded === true);
-  after.requestJump();
-  after.update(1 / 60, { moveX: 0, moveZ: -1, aiming: false, aimYaw: 0 });
-  ok('the next ordinary jump is not still diving', weightOf(after, dive()) === 0,
-    `dive=${weightOf(after, dive()).toFixed(2)}`);
-}
-
 console.log('\nbaked root motion');
 {
   // The one-shots in this pack travel: run_slide carries ~2.5m of Z in the hips
