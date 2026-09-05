@@ -194,7 +194,14 @@ function frame(now) {
     fpsShown = Math.round(fpsFrames / fpsAccum);
     fpsAccum = 0; fpsFrames = 0;
   }
-  hud.state.textContent = character.state + (character.aiming ? ' · aim' : '');
+  // The crouch's charge is worth showing while debugging: the difference
+  // between a long jump and a plain one is invisible until you have already
+  // let go, and on a phone it is easy to hold long enough to lose it.
+  const charged = character.state === 'crouch'
+    && character.speed >= TUNING.longJumpAt;
+  hud.state.textContent = character.state
+    + (charged ? ' · LONG' : '')
+    + (character.aiming ? ' · aim' : '');
   hud.speed.textContent = character.speed.toFixed(1) + ' m/s';
   hud.fps.textContent = fpsShown + ' fps';
   hud.gesture.textContent =

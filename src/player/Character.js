@@ -64,6 +64,8 @@ export class Character {
     this._slideDir = new THREE.Vector3();
     this._meleeDir = new THREE.Vector3();
     this._meleeFacing = 0;
+    /** Did the last launch come out of a running crouch? Drives the dive pose. */
+    this.lastJumpWasLong = false;
     this._comboIndex = 0;
     this._comboT = 0;
     /** Which hand/foot the NEXT strike uses. Alternates down the chain. */
@@ -118,6 +120,7 @@ export class Character {
         || this.state === 'hang' || this.state === 'climb'
         || this.state === 'cover' || this.state === 'crouch') return false;
     this._crouchRelease = false;
+    this.lastJumpWasLong = false;
     this._enter('crouch');
     return true;
   }
@@ -594,6 +597,7 @@ export class Character {
       this.cover = null;
       this._coverPullT = 0;
       this.velocity.y = this.T.jumpSpeed;
+      this.lastJumpWasLong = false;
       this.grounded = false;
       this._jumpBuffered = -1;
       this._airJumps = 0;
@@ -602,6 +606,7 @@ export class Character {
       this._enter('air');
     } else if (this._jumpBuffered >= 0 && canGroundJump) {
       this.velocity.y = this.T.jumpSpeed;
+      this.lastJumpWasLong = false;
       this.grounded = false;
       this._coyote = 0;
       this._jumpBuffered = -1;
@@ -611,6 +616,7 @@ export class Character {
       this._enter('air');
     } else if (this._jumpBuffered >= 0 && canAirJump) {
       this.velocity.y = this.T.doubleJumpSpeed;
+      this.lastJumpWasLong = false;
       this._jumpBuffered = -1;
       this._airJumps++;
       this._oneShotEnds = this.anim.play(CLIPS.doubleJump);
@@ -801,6 +807,19 @@ export class Character {
     this.facing = moveTowardAngle(this.facing, want, rate * dt);
   }
 
+  /**
+   * How much of the launch dive the air pose should be showing, 0..1.
+   *
+   * Only out of a long jump, and only on the way UP: the tilt is him having
+   * thrown himself forward, so holding it through the descent turns a jump into
+   * a skydive. Faded over the last of the rise rather than switched, so the
+   * two poses cross over rather than snapping.
+   */
+  _dive() {
+    if (!this.lastJumpWasLong || this.velocity.y <= 0) return 0;
+    return clamp01(this.velocity.y / (this.T.longJumpSpeed * this.T.diveHoldFrac));
+  }
+
   _drive(dt) {
     const a = this.anim;
     if (this.state === 'hang') {
@@ -818,7 +837,7 @@ export class Character {
     if (a.busy) {
       // An overlay is playing; the tree still gets asked for a pose so the
       // blend underneath is the right one when the overlay fades out.
-      if (!this.grounded) a.air();
+      if (!this.grounded) a.air(this._dive());
       else a.locomotion(this.speed, this._localMoveAngle(), this.speed * dt);
       return;
     }
@@ -827,7 +846,7 @@ export class Character {
       return;
     }
     if (!this.grounded) {
-      a.air();
+      a.air(this._dive());
     } else {
       a.locomotion(this.speed, this._localMoveAngle(), this.speed * dt);
     }

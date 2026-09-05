@@ -42,7 +42,7 @@ Two consequences worth knowing:
 
 ```sh
 npm start            # static server on :8123
-node tests/locomotion.mjs   # 121 controller checks, no browser needed
+node tests/locomotion.mjs   # 128 controller checks, no browser needed
 node tests/collision.mjs    # 53 collision checks, no browser needed
 node tests/smoke.mjs        # boots the real game in Chromium
 node tests/gestures.mjs     # drives the sticks with real touch events
@@ -360,10 +360,19 @@ a ledge should be the level's fault, not the player's.
 * **Held, the crouch is a slide, and it feeds a LONG JUMP** — the Mario move,
   and the thing you clear a gap with. Momentum carries and bleeds off against
   `crouchFriction`; release above `longJumpAt` (6.0 m/s, so it wants a real
-  run-up) and he launches HIGHER as well as much further — measured, **19.7m
-  and 5.6m against a running jump's 9.5m and 3.9m**. The horizontal half is
+  run-up) and he launches HIGHER as well as much further — measured, **27m and
+  5.6m against a running jump's 9.5m and 3.9m**. The horizontal half is
   `longJumpBoost` times whatever speed he carried in, so the run-up is worth
   doing.
+
+  **`crouchFriction` is the number that decides whether the move happens at
+  all**, and it is low (4.0) for a reason that is invisible from a keyboard: a
+  natural press-and-release is 200-400ms, and at 11 m/s^2 that alone bled 2 to
+  4 m/s — often straight through `longJumpAt`, so the move a player thought
+  they were doing quietly came out as a plain jump. It now survives half a
+  second of holding with the long jump still in it, and there is a `· LONG`
+  marker on the debug HUD while a crouch is above the threshold, because the
+  difference is otherwise invisible until you have let go.
 
   The first pass had it launching *lower* than a normal jump on the theory that
   a long jump should be flat. Measured, that came out at 7.8m against a running
@@ -448,6 +457,14 @@ a face-down skydive, which is a pose for a long drop; floating is upright with
 the legs under him, which is what a jump looks like. A ~1s hang is not long
 enough to read a takeoff/rise/fall sequence; blending three across it looks like
 a stutter.
+
+**The LONG jump is the exception, and it uses `falling` on purpose.** That
+face-down tilt is exactly the read for a move whose point is that he threw
+himself forward. `_dive()` holds it while he is still RISING and fades it out
+over the last of the climb (`diveHoldFrac` of `longJumpSpeed`), so he is upright
+again before he lands — hold it through the descent and a jump becomes a
+skydive. `lastJumpWasLong` has to be cleared by every other launch, or one long
+jump leaves every later hop face-down.
 
 ### Cover: back to the wall, and the sided clips are a LEAN
 

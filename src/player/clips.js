@@ -34,6 +34,11 @@ export const CLIPS = {
   // which is a pose for a long drop. Floating is upright with the legs under
   // him, which is what a jump looks like.
   fall: 'floating',
+  // The long jump's launch pose. `falling` is a face-down dive — wrong for an
+  // ordinary hop, which is why `fall` is `floating`, but exactly right for a
+  // move whose whole point is that he threw himself forward. He holds it while
+  // he is still rising and rights himself on the way down.
+  dive: 'falling',
   land: 'landing',
   doubleJump: 'jump_flip',
 
@@ -261,7 +266,11 @@ export const TUNING = {
   // Press the jump thumb and he crouches; release and he jumps. A tap is
   // therefore a very fast crouch-and-go, and a HOLD while running is a slide
   // whose momentum feeds a long jump — the Mario move.
-  crouchFriction: 11.0,     // m/s^2 bled off while sliding; lower = longer slide
+  // Low on purpose. A natural press-and-release is 200-400ms, and at the old
+  // 11 m/s^2 that alone bled 2 to 4 m/s — often straight through longJumpAt, so
+  // the move a player thought they were doing quietly came out as a plain jump.
+  // The crouch is a SLIDE; it should carry.
+  crouchFriction: 4.0,      // m/s^2 bled off while sliding; lower = longer slide
   crouchSteer: 3.0,         // rad/sec — he can still aim the slide, barely
   // The crouch windup every grounded jump goes through, tap included. Long
   // enough for the pose to read against blendHL (0.075) and short enough that
@@ -278,7 +287,11 @@ export const TUNING = {
   // "maybe a little more".
   longJumpAt: 6.0,          // needs a real run-up, not a shuffle
   longJumpSpeed: 19.0,      // 5.6m apex against a normal jump's 4.0m...
-  longJumpBoost: 1.9,       // ...and nearly twice the ground speed with it
+  longJumpBoost: 2.4,       // ...and two and a half times the ground speed
+  // He holds the dive pose while still rising, fading out of it over the last
+  // of the climb. A fraction of longJumpSpeed rather than a time, so retuning
+  // the launch does not silently leave him face-down into the landing.
+  diveHoldFrac: 0.55,
 
   // ── slide tackle (left-stick flick) ──────────────────────────────────────
   slideSpeed: 21.0,

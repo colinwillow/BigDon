@@ -358,8 +358,10 @@ export class AnimationController {
    * stutter rather than a jump.
    */
   enterAir() {
-    const fall = this._action(CLIPS.fall);
-    if (fall) fall.setLoop(THREE.LoopRepeat, Infinity);
+    for (const n of [CLIPS.fall, CLIPS.dive]) {
+      const a = this._action(n);
+      if (a) a.setLoop(THREE.LoopRepeat, Infinity);
+    }
   }
 
   /** Held crouch. One clip; the blend crossfade covers going down into it. */
@@ -367,9 +369,16 @@ export class AnimationController {
     this._want(CLIPS.crouch, 1);
   }
 
-  /** Airborne pose. One clip, held. */
-  air() {
-    this._want(CLIPS.fall, 1);
+  /**
+   * Airborne pose. One clip held, EXCEPT out of a long jump: `dive` is a
+   * face-down tilt that reads as having thrown himself forward, wrong for an
+   * ordinary hop and right for that. It crossfades back into the float, so the
+   * caller just says how much of it it wants each frame.
+   */
+  air(dive = 0) {
+    const d = clamp01(dive);
+    this._want(CLIPS.dive, d);
+    this._want(CLIPS.fall, 1 - d);
   }
 
   /**
